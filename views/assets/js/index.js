@@ -1,3 +1,5 @@
+// views/assets/js/index.js - VERSIÓN CORREGIDA
+// @ts-nocheck
 (function(){
   const $ = s => document.querySelector(s);
   const msg = $('#msg');
@@ -12,14 +14,19 @@
   const selMedico= $('#selMedico');
   const tblBody  = $('#tblTurnos tbody');
 
-  // 🔧 RUTA BASE DE LA API - Configurada desde PHP
+  // ✅ SOLUCIÓN: Obtener la URL base de la API desde la variable global
   const API_BASE = window.API_BASE_URL || '../../controllers/turnos_api.php';
+  
+  console.log('🚀 Inicializando index.js');
+  console.log('📡 API Base URL:', API_BASE);
 
   const MONTHS = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
   const DIAS_ES = ['domingo','lunes','martes','miercoles','jueves','viernes','sabado'];
 
   // Estado UI
-  let current = new Date(); current.setHours(0,0,0,0); current.setDate(1);
+  let current = new Date(); 
+  current.setHours(0,0,0,0); 
+  current.setDate(1);
   let selectedDate = null;
   let selectedSlot = null;
   let selectedApptId = null;
@@ -52,54 +59,102 @@
     return currentMedicoData.horarios.some(h => h.Dia_semana === dayName);
   }
 
+  // ✅ MEJORADO: Carga de especialidades con mejor manejo de errores
   async function loadEspecialidades(){
     console.log('🔄 Cargando especialidades...');
+    
+    if (!selEsp) {
+      console.error('❌ Elemento selEsp no encontrado');
+      return;
+    }
+    
     selEsp.innerHTML = `<option value="">Cargando…</option>`;
-    selMedico.innerHTML = `<option value="">Elegí especialidad…</option>`;
-    selMedico.disabled = true;
+    selEsp.disabled = true;
+    
+    if (selMedico) {
+      selMedico.innerHTML = `<option value="">Elegí especialidad…</option>`;
+      selMedico.disabled = true;
+    }
     
     try {
       const url = `${API_BASE}?action=specialties`;
-      console.log('📡 Fetching:', url);
-      const res = await fetch(url, {headers:{'Accept':'application/json'}});
+      console.log('📡 Fetching especialidades:', url);
+      
+      const res = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'Cache-Control': 'no-cache'
+        }
+      });
+      
+      console.log('📥 Response status:', res.status, res.statusText);
       
       if (!res.ok) {
-        throw new Error(`HTTP error! status: ${res.status}`);
+        throw new Error(`HTTP error! status: ${res.status} ${res.statusText}`);
+      }
+      
+      const contentType = res.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        const text = await res.text();
+        console.error('❌ Respuesta no es JSON:', text.substring(0, 200));
+        throw new Error('La respuesta del servidor no es JSON válido');
       }
       
       const data = await res.json();
       console.log('✅ Especialidades recibidas:', data);
       
       if(!data.ok){ 
-        setMsg(data.error||'Error cargando especialidades', false); 
-        return; 
+        throw new Error(data.error || 'Error cargando especialidades');
       }
       
       especialidadesData = data.items || [];
       selEsp.innerHTML = `<option value="">Elegí especialidad…</option>`;
+      
       especialidadesData.forEach(e=>{
         const opt=document.createElement('option');
         opt.value=e.Id_Especialidad; 
         opt.textContent=e.Nombre;
         selEsp.appendChild(opt);
       });
-      console.log('✅ Especialidades cargadas en el select');
+      
+      selEsp.disabled = false;
+      console.log('✅ Especialidades cargadas en el select:', especialidadesData.length);
+      
     } catch (error) {
       console.error('❌ Error cargando especialidades:', error);
-      setMsg('Error de conexión al cargar especialidades', false);
-      selEsp.innerHTML = `<option value="">Error al cargar</option>`;
+      setMsg('Error de conexión: ' + error.message, false);
+      selEsp.innerHTML = `<option value="">Error al cargar - Refresca la página</option>`;
+      
+      // ✅ Mostrar alerta para el usuario
+      setTimeout(() => {
+        if (confirm('Error al cargar especialidades. ¿Deseas reintentar?')) {
+          loadEspecialidades();
+        }
+      }, 1000);
     }
   }
 
+  // ✅ MEJORADO: Carga de médicos con mejor manejo de errores
   async function loadMedicosByEsp(espId){
     console.log('🔄 Cargando médicos de especialidad:', espId);
+    
+    if (!selMedico) return;
+    
     selMedico.innerHTML = `<option value="">Cargando…</option>`;
     selMedico.disabled = true;
     
     try {
       const url = `${API_BASE}?action=doctors&especialidad_id=${encodeURIComponent(espId)}`;
-      console.log('📡 Fetching:', url);
-      const res = await fetch(url, {headers:{'Accept':'application/json'}});
+      console.log('📡 Fetching médicos:', url);
+      
+      const res = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'Cache-Control': 'no-cache'
+        }
+      });
       
       if (!res.ok) {
         throw new Error(`HTTP error! status: ${res.status}`);
@@ -109,32 +164,43 @@
       console.log('✅ Médicos recibidos:', data);
       
       if(!data.ok){ 
-        setMsg(data.error||'Error cargando médicos', false); 
-        return; 
+        throw new Error(data.error || 'Error cargando médicos');
       }
       
       selMedico.innerHTML = `<option value="">Elegí médico…</option>`;
+      
       (data.items||[]).forEach(m=>{
         const opt=document.createElement('option');
         opt.value=m.Id_medico; 
         opt.textContent=`${m.Apellido}, ${m.Nombre}`;
         selMedico.appendChild(opt);
       });
+      
       selMedico.disabled = false;
-      console.log('✅ Médicos cargados en el select');
+      console.log('✅ Médicos cargados en el select:', data.items?.length || 0);
+      
     } catch (error) {
       console.error('❌ Error cargando médicos:', error);
-      setMsg('Error de conexión al cargar médicos', false);
+      setMsg('Error al cargar médicos: ' + error.message, false);
       selMedico.innerHTML = `<option value="">Error al cargar</option>`;
     }
   }
 
+  // ✅ MEJORADO: Carga de info del médico
   async function loadMedicoInfo(medicoId){
     console.log('🔄 Cargando info del médico:', medicoId);
+    
     try{
       const url = `${API_BASE}?action=medico_info&medico_id=${encodeURIComponent(medicoId)}`;
-      console.log('📡 Fetching:', url);
-      const res = await fetch(url, {headers:{'Accept':'application/json'}});
+      console.log('📡 Fetching info médico:', url);
+      
+      const res = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'Cache-Control': 'no-cache'
+        }
+      });
       
       if (!res.ok) {
         throw new Error(`HTTP error! status: ${res.status}`);
@@ -144,22 +210,35 @@
       console.log('✅ Info del médico recibida:', data);
       
       if(!data.ok) throw new Error(data.error||'Error cargando info del médico');
+      
       currentMedicoData = data.medico;
       renderCalendar();
       console.log('✅ Calendario renderizado con horarios del médico');
+      
     }catch(e){
       console.error('❌ Error cargando info del médico:', e);
-      setMsg(e.message, false);
+      setMsg('Error: ' + e.message, false);
       currentMedicoData = null;
     }
   }
 
+  // ✅ MEJORADO: Carga de turnos
   async function loadMyAppointments(){
     console.log('🔄 Cargando mis turnos...');
+    
+    if (!tblBody) return;
+    
     try {
       const url = `${API_BASE}?action=my_appointments`;
-      console.log('📡 Fetching:', url);
-      const res = await fetch(url, {headers:{'Accept':'application/json'}});
+      console.log('📡 Fetching turnos:', url);
+      
+      const res = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'Cache-Control': 'no-cache'
+        }
+      });
       
       if (!res.ok) {
         throw new Error(`HTTP error! status: ${res.status}`);
@@ -169,13 +248,26 @@
       console.log('✅ Mis turnos recibidos:', data);
       
       if(!data.ok){ 
-        setMsg(data.error||'Error cargando mis turnos', false); 
-        return; 
+        throw new Error(data.error || 'Error cargando turnos');
       }
+      
       renderAppointments(data.items||[]);
+      
     } catch (error) {
       console.error('❌ Error cargando mis turnos:', error);
-      setMsg('Error de conexión al cargar turnos', false);
+      setMsg('Error al cargar turnos: ' + error.message, false);
+      
+      // Mostrar mensaje en la tabla
+      if (tblBody) {
+        tblBody.innerHTML = `
+          <tr>
+            <td colspan="5" style="text-align:center;color:var(--err);padding:20px">
+              ⚠️ Error al cargar turnos<br>
+              <small>${error.message}</small>
+            </td>
+          </tr>
+        `;
+      }
     }
   }
 
@@ -361,10 +453,18 @@
     slotsBox.textContent='Cargando…';
     btnReservar.disabled = true;
     selectedSlot = null;
+    
     try{
       const url = `${API_BASE}?action=slots&date=${encodeURIComponent(dateStr)}&medico_id=${encodeURIComponent(medicoId)}`;
-      console.log('📡 Fetching:', url);
-      const res = await fetch(url, {headers:{'Accept':'application/json'}});
+      console.log('📡 Fetching slots:', url);
+      
+      const res = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'Cache-Control': 'no-cache'
+        }
+      });
       
       if (!res.ok) {
         throw new Error(`HTTP error! status: ${res.status}`);
@@ -373,18 +473,22 @@
       const data = await res.json();
       console.log('✅ Slots recibidos:', data);
       
-      if(!data.ok) throw new Error(data.error||'Error al cargar');
+      if(!data.ok) throw new Error(data.error||'Error al cargar horarios');
+      
       renderSlots(data.slots||[]);
+      
     }catch(e){
       console.error('❌ Error cargando slots:', e);
-      setMsg(e.message,false);
+      setMsg('Error: ' + e.message, false);
       slotsBox.textContent='Error al cargar horarios';
     }
   }
 
   async function onCancel(turnoId){
     if(!confirm('¿Estás seguro de cancelar este turno?')) return;
+    
     console.log('🔄 Cancelando turno:', turnoId);
+    
     try{
       const fd = new FormData();
       fd.append('action','cancel');
@@ -393,7 +497,15 @@
       
       const url = `${API_BASE}`;
       console.log('📡 Posting to:', url);
-      const res = await fetch(url, {method:'POST', body:fd, headers:{'Accept':'application/json','X-CSRF-Token':csrf}});
+      
+      const res = await fetch(url, {
+        method:'POST', 
+        body:fd, 
+        headers:{
+          'Accept':'application/json',
+          'X-CSRF-Token':csrf
+        }
+      });
       
       if (!res.ok) {
         throw new Error(`HTTP error! status: ${res.status}`);
@@ -407,18 +519,28 @@
       setMsg('✅ Turno cancelado', true);
       selectedApptId = null;
       btnReservar.textContent = 'Reservar';
+      
       await loadMyAppointments();
       if (selectedDate && selMedico.value) await fetchSlots(selectedDate, selMedico.value);
+      
     }catch(e){
       console.error('❌ Error cancelando turno:', e);
-      setMsg(e.message,false);
+      setMsg('Error: ' + e.message, false);
     }
   }
 
   btnReservar?.addEventListener('click', async ()=>{
     setMsg('');
-    if(!selMedico.value){ setMsg('Elegí un médico', false); return; }
-    if(!selectedDate || !selectedSlot){ setMsg('Elegí un día y un horario', false); return; }
+    
+    if(!selMedico.value){ 
+      setMsg('Elegí un médico', false); 
+      return; 
+    }
+    
+    if(!selectedDate || !selectedSlot){ 
+      setMsg('Elegí un día y un horario', false); 
+      return; 
+    }
 
     const isReschedule = !!selectedApptId;
     console.log(isReschedule ? '🔄 Reprogramando turno' : '✅ Reservando turno nuevo');
@@ -439,7 +561,15 @@
 
       const url = `${API_BASE}`;
       console.log('📡 Posting to:', url);
-      const res = await fetch(url, {method:'POST', body:fd, headers:{'Accept':'application/json','X-CSRF-Token':csrf}});
+      
+      const res = await fetch(url, {
+        method:'POST', 
+        body:fd, 
+        headers:{
+          'Accept':'application/json',
+          'X-CSRF-Token':csrf
+        }
+      });
       
       if (!res.ok) {
         throw new Error(`HTTP error! status: ${res.status}`);
@@ -451,18 +581,21 @@
       if(!data.ok) throw new Error(data.error|| (isReschedule ? 'No se pudo reprogramar' : 'No se pudo reservar'));
 
       setMsg(isReschedule ? '✅ Turno reprogramado' : '✅ Turno reservado', true);
+      
       await loadMyAppointments();
       await fetchSlots(selectedDate, selMedico.value);
 
       btnReservar.disabled = true; 
       selectedSlot=null;
+      
       if (isReschedule) {
         selectedApptId = null;
         btnReservar.textContent = 'Reservar';
       }
+      
     }catch(e){ 
       console.error('❌ Error en reserva/reprogramación:', e);
-      setMsg(e.message,false); 
+      setMsg('Error: ' + e.message, false); 
     }
   });
 
@@ -482,6 +615,7 @@
       renderCalendar();
       return; 
     }
+    
     await loadMedicosByEsp(selEsp.value);
     renderCalendar();
   });
@@ -521,14 +655,20 @@
     return String(s??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); 
   }
 
-  // Inicial
+  // ✅ Inicial con manejo de errores
   (async function init(){
     console.log('🚀 Inicializando aplicación...');
     console.log('📡 API Base URL:', API_BASE);
-    await loadEspecialidades();
-    await loadMyAppointments();
-    renderCalendar();
-    btnReservar.textContent = 'Reservar';
-    console.log('✅ Aplicación inicializada');
+    
+    try {
+      await loadEspecialidades();
+      await loadMyAppointments();
+      renderCalendar();
+      btnReservar.textContent = 'Reservar';
+      console.log('✅ Aplicación inicializada correctamente');
+    } catch (error) {
+      console.error('❌ Error inicializando aplicación:', error);
+      setMsg('Error al inicializar la aplicación: ' + error.message, false);
+    }
   })();
 })();

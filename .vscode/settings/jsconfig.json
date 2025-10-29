@@ -1,0 +1,61 @@
+{
+  "files.associations": {
+    "*.js": "javascript",
+    "*.php": "php"
+  },
+  "javascript.validate.enable": true,
+  "typescript.validate.enable": false,
+  "js/ts.implicitProjectConfig.checkJs": false,
+  
+  "editor.formatOnSave": false,
+  "editor.tabSize": 2,
+  "editor.detectIndentation": true,
+  "editor.insertSpaces": true,
+  
+  "[javascript]": {
+    "editor.defaultFormatter": "vscode.typescript-language-features",
+    "editor.formatOnSave": false
+  },
+  
+  "[php]": {
+    "editor.defaultFormatter": "bmewburn.vscode-intelephense-client",
+    "editor.formatOnSave": false
+  },
+  
+  "[html]": {
+    "editor.defaultFormatter": "vscode.html-language-features"
+  },
+  
+  "[css]": {
+    "editor.defaultFormatter": "vscode.css-language-features"
+  },
+  
+  "emmet.includeLanguages": {
+    "javascript": "javascriptreact",
+    "php": "html"
+  },
+  
+  "files.exclude": {
+    "**/.git": true,
+    "**/.DS_Store": true,
+    "**/Thumbs.db": true,
+    "**/node_modules": true,
+    "**/vendor": true
+  },
+  
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/vendor": true,
+    "**/*.log": true
+  },
+  
+  "php.validate.enable": true,
+  "php.validate.executablePath": "C:/laragon/bin/php/php-8.2.0/php.exe",
+  
+  "intelephense.environment.phpVersion": "8.2.0",
+  "intelephense.files.maxSize": 5000000,
+  
+  "path-intellisense.mappings": {
+    "/": "${workspaceRoot}"
+  }
+}

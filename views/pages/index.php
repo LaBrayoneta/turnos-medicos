@@ -1,7 +1,8 @@
 <?php
+// views/pages/index.php - VERSIÓN CORREGIDA
 session_start();
 require_once __DIR__ . '/../../config/db.php';
-
+require_once __DIR__ . '/../../config/paths.php'; // ✅ Importar paths
 
 $logueado = !empty($_SESSION['Id_usuario']);
 $nombre = ($logueado ? ($_SESSION['Nombre'] ?? '') : '');
@@ -19,6 +20,9 @@ function ensureCsrf() {
   return $_SESSION['csrf_token'];
 }
 $csrf = ensureCsrf();
+
+// ✅ SOLUCIÓN: Definir correctamente la ruta base de la API
+$api_base_url = controller('turnos_api.php');
 ?>
 <!doctype html>
 <html lang="es">
@@ -27,9 +31,14 @@ $csrf = ensureCsrf();
   <title>Clínica Médica - Sistema de Turnos Online</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="csrf-token" content="<?= htmlspecialchars($csrf) ?>">
-  <link rel="stylesheet" href="../assets/css/index.css">
+  <!-- ✅ CRÍTICO: Definir la URL base de la API ANTES de cargar el JS -->
+  <script>
+    window.API_BASE_URL = '<?= $api_base_url ?>';
+    console.log('🔧 API Base URL configurada:', window.API_BASE_URL);
+  </script>
+  <link rel="stylesheet" href="<?= asset('css/index.css') ?>">
   <style>
-    /* Mejoras visuales adicionales */
+    /* Estilos adicionales mejorados */
     :root {
       --gradient-1: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
       --gradient-2: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
@@ -223,7 +232,6 @@ $csrf = ensureCsrf();
       box-shadow: 0 0 10px rgba(251,146,60,0.3);
     }
 
-    /* Animación de carga */
     @keyframes shimmer {
       0% { background-position: -1000px 0; }
       100% { background-position: 1000px 0; }
@@ -235,7 +243,6 @@ $csrf = ensureCsrf();
       animation: shimmer 2s infinite;
     }
 
-    /* Stats en hero para usuarios logueados */
     .stats {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -264,7 +271,6 @@ $csrf = ensureCsrf();
       font-size: 14px;
     }
 
-    /* Mejoras en calendario */
     .cal-grid {
       gap: 8px;
     }
@@ -283,15 +289,49 @@ $csrf = ensureCsrf();
       -webkit-text-fill-color: transparent;
       background-clip: text;
     }
+
+    /* ✅ Indicador de conexión */
+    .connection-status {
+      position: fixed;
+      top: 70px;
+      right: 20px;
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      z-index: 1000;
+      display: none;
+      animation: fadeIn 0.3s;
+    }
+
+    .connection-status.error {
+      background: rgba(239, 68, 68, 0.9);
+      color: white;
+      display: block;
+    }
+
+    .connection-status.success {
+      background: rgba(16, 185, 129, 0.9);
+      color: white;
+      display: block;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(-10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
   </style>
 </head>
 <body>
+  <!-- ✅ Indicador de estado de conexión -->
+  <div id="connectionStatus" class="connection-status"></div>
+
   <header class="hdr">
     <div class="brand">🏥 Clínica Médica</div>
     <div class="actions">
       <?php if ($logueado): ?>
         <span style="color:var(--muted)">👋 Hola, <strong style="color:var(--primary)"><?= htmlspecialchars($nombre . ' ' . $apellido) ?></strong></span>
-        <form class="inline" action="../../controllers/logout.php" method="post" style="display:inline;margin:0">
+        <form class="inline" action="<?= controller('logout.php') ?>" method="post" style="display:inline;margin:0">
           <button type="submit" class="btn ghost">🚪 Cerrar sesión</button>
         </form>
       <?php else: ?>
@@ -433,33 +473,60 @@ $csrf = ensureCsrf();
   </footer>
 
   <?php if ($logueado): ?>
-  <script src="../assets/js/index.js"></script>
+  <!-- ✅ IMPORTANTE: Cargar el JS DESPUÉS de definir API_BASE_URL -->
+  <script src="<?= asset('js/index.js') ?>"></script>
   <script>
-  // Modificar las llamadas fetch para usar la ruta correcta
-  (function() {
-    const API_BASE = '../../controllers/turnos_api.php';
-    
-    // Helper para formato 12h
-    window.formatHour12 = function(time24) {
-      if (!time24) return '';
-      const parts = time24.split(':');
-      let h = parseInt(parts[0]);
-      const m = parts[1];
-      const ampm = h >= 12 ? 'PM' : 'AM';
-      h = h % 12 || 12;
-      return `${h}:${m} ${ampm}`;
-    };
-
-    // Sobrescribir las funciones fetch del index.js
-    const originalFetch = window.fetch;
-    window.fetch = function(url, options) {
-      // Si la URL es relativa y apunta a turnos_api.php, corregirla
-      if (typeof url === 'string' && url.includes('turnos_api.php') && !url.startsWith('http')) {
-        url = API_BASE + url.substring(url.indexOf('?'));
+    // ✅ Verificación adicional de conectividad
+    (function() {
+      const statusIndicator = document.getElementById('connectionStatus');
+      
+      function showStatus(message, isError = false) {
+        if (!statusIndicator) return;
+        statusIndicator.textContent = message;
+        statusIndicator.className = 'connection-status ' + (isError ? 'error' : 'success');
+        
+        if (!isError) {
+          setTimeout(() => {
+            statusIndicator.style.display = 'none';
+          }, 3000);
+        }
       }
-      return originalFetch(url, options);
-    };
-  })();
+
+      // Verificar conectividad al cargar
+      async function checkConnection() {
+        try {
+          console.log('🔍 Verificando conectividad con:', window.API_BASE_URL);
+          const response = await fetch(window.API_BASE_URL + '?action=specialties', {
+            method: 'GET',
+            headers: { 'Accept': 'application/json' }
+          });
+          
+          if (response.ok) {
+            console.log('✅ Conexión exitosa');
+            showStatus('✅ Conectado', false);
+          } else {
+            throw new Error(`HTTP ${response.status}`);
+          }
+        } catch (error) {
+          console.error('❌ Error de conexión:', error);
+          showStatus('❌ Error de conexión - Verifica la configuración', true);
+        }
+      }
+
+      // Verificar al cargar la página
+      setTimeout(checkConnection, 1000);
+
+      // Helper para formato 12h
+      window.formatHour12 = function(time24) {
+        if (!time24) return '';
+        const parts = time24.split(':');
+        let h = parseInt(parts[0]);
+        const m = parts[1];
+        const ampm = h >= 12 ? 'PM' : 'AM';
+        h = h % 12 || 12;
+        return `${h}:${m} ${ampm}`;
+      };
+    })();
   </script>
   <?php endif; ?>
 </body>
