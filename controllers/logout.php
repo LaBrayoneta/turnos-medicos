@@ -1,3 +1,4 @@
+<!-- logout.php -->
 <?php
 // logout.php — destruye sesión y vuelve al inicio
 session_start();
@@ -18,5 +19,5 @@ if (ini_get("session.use_cookies")) {
 session_destroy();
 
 // Redirige al inicio
-header('Location: views/pages/index.php');
+header('Location: ../views/pages/index.php');
 exit;

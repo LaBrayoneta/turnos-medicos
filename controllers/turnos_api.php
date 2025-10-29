@@ -1,9 +1,10 @@
+<!-- turnos_api.php -->
 <?php
 // turnos_api.php — API mejorada con horarios flexibles por médico
 error_reporting(0);
 ini_set('display_errors', '0');
 session_start();
-require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/../config/db.php';
 
 function json_out($data, $code=200){ 
   http_response_code($code); 

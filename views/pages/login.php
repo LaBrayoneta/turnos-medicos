@@ -4,7 +4,7 @@
  * Optimizado para la estructura de BD actualizada
  */
 session_start();
-require_once __DIR__ . '/config/db.php';
+require_once __DIR__ . '/../../config/db.php';
 
 $pdo = db();
 $error = '';

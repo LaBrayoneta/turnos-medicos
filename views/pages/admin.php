@@ -1,6 +1,6 @@
 <?php
 session_start();
-require_once __DIR__ . '/config/db.php';
+require_once __DIR__ . '/../../config/db.php';
 
 function dbx(){ return db(); }
 function json_out($d,$c=200){ http_response_code($c); header('Content-Type: application/json; charset=utf-8'); echo json_encode($d, JSON_UNESCAPED_UNICODE); exit; }

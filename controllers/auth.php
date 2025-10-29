@@ -1,7 +1,8 @@
+<!-- auth.php -->
 <?php
-// auth.php — ?action=register|login (solo bloque register mostrado)
+// auth.php — ?action=register|login
 session_start();
-require_once __DIR__ . '/config/db.php';
+require_once __DIR__ . '/../config/db.php';
 header('Content-Type: application/json; charset=utf-8');
 
 $pdo = db();
@@ -17,7 +18,7 @@ if ($action === 'register' && $_SERVER['REQUEST_METHOD'] === 'POST') {
   $obra     = trim($_POST['obra_social'] ?? '');
   $libreta  = trim($_POST['libreta_sanitaria'] ?? '');
 
-  // Back-compat: si vino un “nombre” combinado (sin apellido), partir en dos
+  // Back-compat: si vino un "nombre" combinado (sin apellido), partir en dos
   if ($apellido === '' && strpos($nombre, ' ') !== false) {
     $parts = preg_split('/\s+/', $nombre, 2);
     $nombre = trim($parts[0] ?? $nombre);

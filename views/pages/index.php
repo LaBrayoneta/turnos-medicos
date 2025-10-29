@@ -1,6 +1,6 @@
 <?php
 session_start();
-require_once __DIR__ . '/config/db.php';
+require_once __DIR__ . '/../../config/db.php';
 
 $logueado = !empty($_SESSION['Id_usuario']);
 $nombre = ($logueado ? ($_SESSION['Nombre'] ?? '') : '');
@@ -26,7 +26,7 @@ $csrf = ensureCsrf();
   <title>Clínica Médica - Sistema de Turnos Online</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="csrf-token" content="<?= htmlspecialchars($csrf) ?>">
-  <link rel="stylesheet" href="index.css">
+  <link rel="stylesheet" href="../assets/css/index.css">
   <style>
     /* Mejoras visuales adicionales */
     :root {
@@ -290,7 +290,7 @@ $csrf = ensureCsrf();
     <div class="actions">
       <?php if ($logueado): ?>
         <span style="color:var(--muted)">👋 Hola, <strong style="color:var(--primary)"><?= htmlspecialchars($nombre . ' ' . $apellido) ?></strong></span>
-        <form class="inline" action="logout.php" method="post" style="display:inline;margin:0">
+        <form class="inline" action="../../controllers/logout.php" method="post" style="display:inline;margin:0">
           <button type="submit" class="btn ghost">🚪 Cerrar sesión</button>
         </form>
       <?php else: ?>
@@ -432,59 +432,32 @@ $csrf = ensureCsrf();
   </footer>
 
   <?php if ($logueado): ?>
+  <script src="../assets/js/index.js"></script>
   <script>
-  // Función helper para formato 12h
-  function formatHour12(time24) {
-    if (!time24) return '';
-    const parts = time24.split(':');
-    let h = parseInt(parts[0]);
-    const m = parts[1];
-    const ampm = h >= 12 ? 'PM' : 'AM';
-    h = h % 12 || 12;
-    return `${h}:${m} ${ampm}`;
-  }
-  </script>
-  <script src="index.js"></script>
-  <script>
-  // Modificar la renderización de slots para mostrar AM/PM
+  // Modificar las llamadas fetch para usar la ruta correcta
   (function() {
-    const originalRenderSlots = window.renderSlots;
-    if (typeof originalRenderSlots === 'function') {
-      window.renderSlots = function(list) {
-        const slotsBox = document.getElementById('slots');
-        if (!slotsBox) return;
-        
-        slotsBox.innerHTML = '';
-        if(!Array.isArray(list) || list.length===0){
-          slotsBox.textContent = 'No hay horarios disponibles';
-          const btnReservar = document.getElementById('btnReservar');
-          if (btnReservar) btnReservar.disabled = true;
-          return;
-        }
-        
-        list.forEach(hhmm=>{
-          const b = document.createElement('button');
-          b.type='button';
-          b.className='slot';
-          b.textContent = formatHour12(hhmm);
-          b.dataset.value = hhmm;
-          b.addEventListener('click', ()=>{
-            window.selectedSlot = hhmm; // Guardamos el valor original 24h
-            document.querySelectorAll('.slot').forEach(x=>x.classList.remove('sel'));
-            b.classList.add('sel');
-            const btnReservar = document.getElementById('btnReservar');
-            const selMedico = document.getElementById('selMedico');
-            if (btnReservar) btnReservar.disabled = !selMedico?.value;
-            const msg = document.getElementById('msg');
-            if (msg) {
-              msg.textContent = '';
-              msg.className = 'msg';
-            }
-          });
-          slotsBox.appendChild(b);
-        });
-      };
-    }
+    const API_BASE = '../../controllers/turnos_api.php';
+    
+    // Helper para formato 12h
+    window.formatHour12 = function(time24) {
+      if (!time24) return '';
+      const parts = time24.split(':');
+      let h = parseInt(parts[0]);
+      const m = parts[1];
+      const ampm = h >= 12 ? 'PM' : 'AM';
+      h = h % 12 || 12;
+      return `${h}:${m} ${ampm}`;
+    };
+
+    // Sobrescribir las funciones fetch del index.js
+    const originalFetch = window.fetch;
+    window.fetch = function(url, options) {
+      // Si la URL es relativa y apunta a turnos_api.php, corregirla
+      if (typeof url === 'string' && url.includes('turnos_api.php') && !url.startsWith('http')) {
+        url = API_BASE + url.substring(url.indexOf('?'));
+      }
+      return originalFetch(url, options);
+    };
   })();
   </script>
   <?php endif; ?>
