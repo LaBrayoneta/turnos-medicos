@@ -570,7 +570,7 @@ $rolTexto = $isSec ? 'Secretaría' : 'Médico';
   <title>Panel Administrativo - Clínica</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="csrf-token" content="<?= htmlspecialchars($csrf) ?>">
-  <link rel="stylesheet" href="admin.css">
+  <link rel="stylesheet" href="../assets/css/admin.css">
   <style>
     .horario-item {
       background: #0f172a;
@@ -663,7 +663,7 @@ $rolTexto = $isSec ? 'Secretaría' : 'Médico';
   <div class="who">👤 <?= htmlspecialchars($apellido.', '.$nombre) ?> — <?= $rolTexto ?></div>
   <nav class="actions">
     <a class="btn ghost" href="admin.php">🏠 Inicio</a>
-    <form class="inline" action="logout.php" method="post" style="display:inline;margin:0">
+    <form class="inline" action="../../controllers/logout.php" method="post" style="display:inline;margin:0">
       <button class="btn ghost" type="submit">🚪 Salir</button>
     </form>
   </nav>
@@ -934,7 +934,7 @@ $rolTexto = $isSec ? 'Secretaría' : 'Médico';
   </div>
 </div>
 
-<script src="admin.js"></script>
+<script src="../assets/js/admin.js"></script>
 <script>
 // Sistema de gestión de horarios múltiples
 (function(){

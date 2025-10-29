@@ -278,12 +278,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </form>
 
             <div class="footer">
-                ¿No tenés cuenta? <a href="views/pages/register.php">Crear cuenta</a> · 
-                <a href="views/pages/index.php">Volver al inicio</a>
+                ¿No tenés cuenta? <a href="register.php">Crear cuenta</a> · 
+                <a href="index.php">Volver al inicio</a>
             </div>
         </div>
     </div>
 
-    <script src="views/assets/js/login.js"></script>
+    <script src="../assets/js/login.js"></script>
 </body>
 </html>

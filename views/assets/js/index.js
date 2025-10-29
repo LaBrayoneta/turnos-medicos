@@ -12,6 +12,9 @@
   const selMedico= $('#selMedico');
   const tblBody  = $('#tblTurnos tbody');
 
+  // 🔧 RUTA BASE DE LA API - Configurada desde PHP
+  const API_BASE = window.API_BASE_URL || '../../controllers/turnos_api.php';
+
   const MONTHS = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
   const DIAS_ES = ['domingo','lunes','martes','miercoles','jueves','viernes','sabado'];
 
@@ -50,64 +53,143 @@
   }
 
   async function loadEspecialidades(){
+    console.log('🔄 Cargando especialidades...');
     selEsp.innerHTML = `<option value="">Cargando…</option>`;
     selMedico.innerHTML = `<option value="">Elegí especialidad…</option>`;
     selMedico.disabled = true;
     
-    const res = await fetch('turnos_api.php?action=specialties',{headers:{'Accept':'application/json'}});
-    const data = await res.json();
-    if(!data.ok){ setMsg(data.error||'Error cargando especialidades', false); return; }
-    
-    especialidadesData = data.items || [];
-    selEsp.innerHTML = `<option value="">Elegí especialidad…</option>`;
-    especialidadesData.forEach(e=>{
-      const opt=document.createElement('option');
-      opt.value=e.Id_Especialidad; 
-      opt.textContent=e.Nombre;
-      selEsp.appendChild(opt);
-    });
+    try {
+      const url = `${API_BASE}?action=specialties`;
+      console.log('📡 Fetching:', url);
+      const res = await fetch(url, {headers:{'Accept':'application/json'}});
+      
+      if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status}`);
+      }
+      
+      const data = await res.json();
+      console.log('✅ Especialidades recibidas:', data);
+      
+      if(!data.ok){ 
+        setMsg(data.error||'Error cargando especialidades', false); 
+        return; 
+      }
+      
+      especialidadesData = data.items || [];
+      selEsp.innerHTML = `<option value="">Elegí especialidad…</option>`;
+      especialidadesData.forEach(e=>{
+        const opt=document.createElement('option');
+        opt.value=e.Id_Especialidad; 
+        opt.textContent=e.Nombre;
+        selEsp.appendChild(opt);
+      });
+      console.log('✅ Especialidades cargadas en el select');
+    } catch (error) {
+      console.error('❌ Error cargando especialidades:', error);
+      setMsg('Error de conexión al cargar especialidades', false);
+      selEsp.innerHTML = `<option value="">Error al cargar</option>`;
+    }
   }
 
   async function loadMedicosByEsp(espId){
+    console.log('🔄 Cargando médicos de especialidad:', espId);
     selMedico.innerHTML = `<option value="">Cargando…</option>`;
     selMedico.disabled = true;
     
-    const res = await fetch(`turnos_api.php?action=doctors&especialidad_id=${encodeURIComponent(espId)}`,{headers:{'Accept':'application/json'}});
-    const data = await res.json();
-    if(!data.ok){ setMsg(data.error||'Error cargando médicos', false); return; }
-    
-    selMedico.innerHTML = `<option value="">Elegí médico…</option>`;
-    (data.items||[]).forEach(m=>{
-      const opt=document.createElement('option');
-      opt.value=m.Id_medico; 
-      opt.textContent=`${m.Apellido}, ${m.Nombre}`;
-      selMedico.appendChild(opt);
-    });
-    selMedico.disabled = false;
+    try {
+      const url = `${API_BASE}?action=doctors&especialidad_id=${encodeURIComponent(espId)}`;
+      console.log('📡 Fetching:', url);
+      const res = await fetch(url, {headers:{'Accept':'application/json'}});
+      
+      if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status}`);
+      }
+      
+      const data = await res.json();
+      console.log('✅ Médicos recibidos:', data);
+      
+      if(!data.ok){ 
+        setMsg(data.error||'Error cargando médicos', false); 
+        return; 
+      }
+      
+      selMedico.innerHTML = `<option value="">Elegí médico…</option>`;
+      (data.items||[]).forEach(m=>{
+        const opt=document.createElement('option');
+        opt.value=m.Id_medico; 
+        opt.textContent=`${m.Apellido}, ${m.Nombre}`;
+        selMedico.appendChild(opt);
+      });
+      selMedico.disabled = false;
+      console.log('✅ Médicos cargados en el select');
+    } catch (error) {
+      console.error('❌ Error cargando médicos:', error);
+      setMsg('Error de conexión al cargar médicos', false);
+      selMedico.innerHTML = `<option value="">Error al cargar</option>`;
+    }
   }
 
   async function loadMedicoInfo(medicoId){
+    console.log('🔄 Cargando info del médico:', medicoId);
     try{
-      const res = await fetch(`turnos_api.php?action=medico_info&medico_id=${encodeURIComponent(medicoId)}`,{headers:{'Accept':'application/json'}});
+      const url = `${API_BASE}?action=medico_info&medico_id=${encodeURIComponent(medicoId)}`;
+      console.log('📡 Fetching:', url);
+      const res = await fetch(url, {headers:{'Accept':'application/json'}});
+      
+      if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status}`);
+      }
+      
       const data = await res.json();
+      console.log('✅ Info del médico recibida:', data);
+      
       if(!data.ok) throw new Error(data.error||'Error cargando info del médico');
       currentMedicoData = data.medico;
       renderCalendar();
+      console.log('✅ Calendario renderizado con horarios del médico');
     }catch(e){
+      console.error('❌ Error cargando info del médico:', e);
       setMsg(e.message, false);
       currentMedicoData = null;
     }
   }
 
   async function loadMyAppointments(){
-    const res = await fetch('turnos_api.php?action=my_appointments',{headers:{'Accept':'application/json'}});
-    const data = await res.json();
-    if(!data.ok){ setMsg(data.error||'Error cargando mis turnos', false); return; }
-    renderAppointments(data.items||[]);
+    console.log('🔄 Cargando mis turnos...');
+    try {
+      const url = `${API_BASE}?action=my_appointments`;
+      console.log('📡 Fetching:', url);
+      const res = await fetch(url, {headers:{'Accept':'application/json'}});
+      
+      if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status}`);
+      }
+      
+      const data = await res.json();
+      console.log('✅ Mis turnos recibidos:', data);
+      
+      if(!data.ok){ 
+        setMsg(data.error||'Error cargando mis turnos', false); 
+        return; 
+      }
+      renderAppointments(data.items||[]);
+    } catch (error) {
+      console.error('❌ Error cargando mis turnos:', error);
+      setMsg('Error de conexión al cargar turnos', false);
+    }
   }
 
   function renderAppointments(rows){
+    if (!tblBody) return;
     tblBody.innerHTML='';
+    
+    if (rows.length === 0) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = '<td colspan="5" style="text-align:center;color:var(--muted)">No tenés turnos registrados</td>';
+      tblBody.appendChild(tr);
+      return;
+    }
+    
     rows.forEach(r=>{
       const tr=document.createElement('tr');
       const acciones = (r.estado === 'reservado')
@@ -132,29 +214,27 @@
         selectedApptId = b.dataset.id;
         const medId = b.dataset.med || '';
         
+        console.log('🔄 Reprogramando turno:', selectedApptId, 'Médico:', medId);
+        
         if (medId) {
-          // Buscar especialidad del médico
           try {
-            const res = await fetch(`turnos_api.php?action=medico_info&medico_id=${medId}`,{headers:{'Accept':'application/json'}});
+            const url = `${API_BASE}?action=medico_info&medico_id=${medId}`;
+            const res = await fetch(url, {headers:{'Accept':'application/json'}});
             const data = await res.json();
             
             if(data.ok && data.medico) {
-              // Obtener médico completo para encontrar su especialidad
-              const resDoctors = await fetch('turnos_api.php?action=specialties',{headers:{'Accept':'application/json'}});
-              const dataEsp = await resDoctors.json();
+              const resEsp = await fetch(`${API_BASE}?action=specialties`, {headers:{'Accept':'application/json'}});
+              const dataEsp = await resEsp.json();
               
-              // Cargar todas las especialidades si no están cargadas
               if(dataEsp.ok) {
                 for(let esp of dataEsp.items) {
-                  const resMeds = await fetch(`turnos_api.php?action=doctors&especialidad_id=${esp.Id_Especialidad}`,{headers:{'Accept':'application/json'}});
+                  const resMeds = await fetch(`${API_BASE}?action=doctors&especialidad_id=${esp.Id_Especialidad}`, {headers:{'Accept':'application/json'}});
                   const dataMeds = await resMeds.json();
                   if(dataMeds.ok) {
                     const medicoEncontrado = dataMeds.items.find(m => m.Id_medico == medId);
                     if(medicoEncontrado) {
-                      // Seleccionar especialidad
                       selEsp.value = esp.Id_Especialidad;
                       await loadMedicosByEsp(esp.Id_Especialidad);
-                      // Seleccionar médico
                       selMedico.value = medId;
                       await loadMedicoInfo(medId);
                       break;
@@ -164,7 +244,7 @@
               }
             }
           } catch(e) {
-            console.error('Error al cargar médico:', e);
+            console.error('❌ Error al cargar médico para reprogramación:', e);
           }
         }
         
@@ -179,6 +259,8 @@
   }
 
   function renderCalendar(){
+    if (!calTitle || !calGrid) return;
+    
     calTitle.textContent = `${MONTHS[current.getMonth()]} ${current.getFullYear()}`;
     selectedDate = null; 
     selectedSlot=null; 
@@ -190,7 +272,9 @@
       if(calHint) calHint.textContent = 'Seleccioná un médico para ver sus días disponibles';
     } else {
       slotsBox.textContent='Elegí un día disponible…';
-      const diasTexto = currentMedicoData.dias_disponibles.split(',').map(d=>d.trim()).join(', ');
+      const diasTexto = currentMedicoData.dias_disponibles ? 
+        currentMedicoData.dias_disponibles.split(',').map(d=>d.trim()).join(', ') : 
+        'No configurados';
       if(calHint) calHint.textContent = `Días habilitados: ${diasTexto}`;
     }
 
@@ -222,6 +306,7 @@
       }
       calGrid.appendChild(cell);
     }
+    console.log('✅ Calendario renderizado');
   }
 
   function highlightSelection(cell){ 
@@ -234,6 +319,8 @@
     selectedSlot = null;
     btnReservar.disabled = true;
     highlightSelection(cell);
+    
+    console.log('📅 Día seleccionado:', selectedDate);
     
     if(!selMedico.value){ 
       slotsBox.textContent='Elegí especialidad y médico…'; 
@@ -248,8 +335,10 @@
       slotsBox.textContent = 'No hay horarios disponibles';
       btnReservar.disabled = true;
       selectedSlot = null;
+      console.log('⚠️ No hay slots disponibles');
       return;
     }
+    console.log('✅ Renderizando', list.length, 'slots');
     list.forEach(hhmm=>{
       const b = document.createElement('button');
       b.type='button';
@@ -261,21 +350,33 @@
         b.classList.add('sel');
         btnReservar.disabled = !selMedico.value;
         setMsg('');
+        console.log('🕐 Slot seleccionado:', hhmm);
       });
       slotsBox.appendChild(b);
     });
   }
 
   async function fetchSlots(dateStr, medicoId){
+    console.log('🔄 Cargando slots para:', dateStr, 'médico:', medicoId);
     slotsBox.textContent='Cargando…';
     btnReservar.disabled = true;
     selectedSlot = null;
     try{
-      const res = await fetch(`turnos_api.php?action=slots&date=${encodeURIComponent(dateStr)}&medico_id=${encodeURIComponent(medicoId)}`,{headers:{'Accept':'application/json'}});
+      const url = `${API_BASE}?action=slots&date=${encodeURIComponent(dateStr)}&medico_id=${encodeURIComponent(medicoId)}`;
+      console.log('📡 Fetching:', url);
+      const res = await fetch(url, {headers:{'Accept':'application/json'}});
+      
+      if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status}`);
+      }
+      
       const data = await res.json();
+      console.log('✅ Slots recibidos:', data);
+      
       if(!data.ok) throw new Error(data.error||'Error al cargar');
       renderSlots(data.slots||[]);
     }catch(e){
+      console.error('❌ Error cargando slots:', e);
       setMsg(e.message,false);
       slotsBox.textContent='Error al cargar horarios';
     }
@@ -283,14 +384,24 @@
 
   async function onCancel(turnoId){
     if(!confirm('¿Estás seguro de cancelar este turno?')) return;
+    console.log('🔄 Cancelando turno:', turnoId);
     try{
       const fd = new FormData();
       fd.append('action','cancel');
       fd.append('turno_id', turnoId);
       fd.append('csrf_token', csrf);
       
-      const res = await fetch('turnos_api.php',{method:'POST', body:fd, headers:{'Accept':'application/json','X-CSRF-Token':csrf}});
+      const url = `${API_BASE}`;
+      console.log('📡 Posting to:', url);
+      const res = await fetch(url, {method:'POST', body:fd, headers:{'Accept':'application/json','X-CSRF-Token':csrf}});
+      
+      if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status}`);
+      }
+      
       const data = await res.json();
+      console.log('✅ Respuesta de cancelación:', data);
+      
       if(!data.ok) throw new Error(data.error||'No se pudo cancelar');
       
       setMsg('✅ Turno cancelado', true);
@@ -299,6 +410,7 @@
       await loadMyAppointments();
       if (selectedDate && selMedico.value) await fetchSlots(selectedDate, selMedico.value);
     }catch(e){
+      console.error('❌ Error cancelando turno:', e);
       setMsg(e.message,false);
     }
   }
@@ -309,6 +421,7 @@
     if(!selectedDate || !selectedSlot){ setMsg('Elegí un día y un horario', false); return; }
 
     const isReschedule = !!selectedApptId;
+    console.log(isReschedule ? '🔄 Reprogramando turno' : '✅ Reservando turno nuevo');
 
     try{
       const fd=new FormData();
@@ -324,8 +437,17 @@
         fd.append('action','book');
       }
 
-      const res = await fetch('turnos_api.php',{method:'POST', body:fd, headers:{'Accept':'application/json','X-CSRF-Token':csrf}});
+      const url = `${API_BASE}`;
+      console.log('📡 Posting to:', url);
+      const res = await fetch(url, {method:'POST', body:fd, headers:{'Accept':'application/json','X-CSRF-Token':csrf}});
+      
+      if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status}`);
+      }
+      
       const data = await res.json();
+      console.log('✅ Respuesta de reserva:', data);
+      
       if(!data.ok) throw new Error(data.error|| (isReschedule ? 'No se pudo reprogramar' : 'No se pudo reservar'));
 
       setMsg(isReschedule ? '✅ Turno reprogramado' : '✅ Turno reservado', true);
@@ -338,11 +460,15 @@
         selectedApptId = null;
         btnReservar.textContent = 'Reservar';
       }
-    }catch(e){ setMsg(e.message,false); }
+    }catch(e){ 
+      console.error('❌ Error en reserva/reprogramación:', e);
+      setMsg(e.message,false); 
+    }
   });
 
   // Selectores
   selEsp?.addEventListener('change', async ()=>{
+    console.log('🔄 Especialidad seleccionada:', selEsp.value);
     setMsg('');
     selectedDate=null; 
     selectedSlot=null; 
@@ -361,6 +487,7 @@
   });
 
   selMedico?.addEventListener('change', async ()=>{
+    console.log('🔄 Médico seleccionado:', selMedico.value);
     setMsg('');
     selectedSlot=null; 
     btnReservar.disabled=true;
@@ -378,16 +505,30 @@
   });
 
   // Calendario navegación
-  calPrev?.addEventListener('click', ()=>{ current.setMonth(current.getMonth()-1); renderCalendar(); });
-  calNext?.addEventListener('click', ()=>{ current.setMonth(current.getMonth()+1); renderCalendar(); });
+  calPrev?.addEventListener('click', ()=>{ 
+    console.log('⬅️ Mes anterior');
+    current.setMonth(current.getMonth()-1); 
+    renderCalendar(); 
+  });
+  
+  calNext?.addEventListener('click', ()=>{ 
+    console.log('➡️ Mes siguiente');
+    current.setMonth(current.getMonth()+1); 
+    renderCalendar(); 
+  });
 
-  function escapeHtml(s){ return String(s??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+  function escapeHtml(s){ 
+    return String(s??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); 
+  }
 
   // Inicial
   (async function init(){
+    console.log('🚀 Inicializando aplicación...');
+    console.log('📡 API Base URL:', API_BASE);
     await loadEspecialidades();
     await loadMyAppointments();
     renderCalendar();
     btnReservar.textContent = 'Reservar';
+    console.log('✅ Aplicación inicializada');
   })();
 })();

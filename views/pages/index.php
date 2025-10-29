@@ -2,6 +2,7 @@
 session_start();
 require_once __DIR__ . '/../../config/db.php';
 
+
 $logueado = !empty($_SESSION['Id_usuario']);
 $nombre = ($logueado ? ($_SESSION['Nombre'] ?? '') : '');
 $apellido = ($logueado ? ($_SESSION['Apellido'] ?? '') : '');
