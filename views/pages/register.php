@@ -39,36 +39,48 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // Validaciones
     if (empty($dni)) {
-        $errors[] = 'El DNI es obligatorio';
-    } elseif (!preg_match('/^[0-9]{7,10}$/', $dni)) {
-        $errors[] = 'El DNI debe tener entre 7 y 10 dígitos';
+    $errors[] = 'El DNI es obligatorio';
+} elseif (!filter_var($dni, FILTER_VALIDATE_INT, [
+    'options' => ['min_range' => 1000000, 'max_range' => 99999999999]
+])) {
+    $errors[] = 'El DNI debe ser un número válido entre 7 y 11 dígitos';
+}
+
+  if (empty($nombre)) {
+    $errors[] = 'El nombre es obligatorio';
+} elseif (mb_strlen($nombre) < 2 || mb_strlen($nombre) > 50) {
+    $errors[] = 'El nombre debe tener entre 2 y 50 caracteres';
+} elseif (!preg_match('/^[\p{L}\s\'-]+$/u', $nombre)) {
+    $errors[] = 'El nombre contiene caracteres no válidos';
     }
 
-    if (empty($nombre)) {
-        $errors[] = 'El nombre es obligatorio';
-    } elseif (!preg_match('/^[a-záéíóúñüA-ZÁÉÍÓÚÑÜ\s]{2,50}$/u', $nombre)) {
-        $errors[] = 'El nombre solo puede contener letras (2-50 caracteres)';
-    }
-
-    if (empty($apellido)) {
-        $errors[] = 'El apellido es obligatorio';
-    } elseif (!preg_match('/^[a-záéíóúñüA-ZÁÉÍÓÚÑÜ\s]{2,50}$/u', $apellido)) {
-        $errors[] = 'El apellido solo puede contener letras (2-50 caracteres)';
-    }
+   if (empty($apellido)) {
+    $errors[] = 'El apellido es obligatorio';
+} elseif (mb_strlen($apellido) < 2 || mb_strlen($apellido) > 50) {
+    $errors[] = 'El apellido debe tener entre 2 y 50 caracteres';
+} elseif (!preg_match('/^[\p{L}\s\'-]+$/u', $apellido)) {
+    $errors[] = 'El apellido contiene caracteres no válidos';
+}
 
     if (empty($email)) {
-        $errors[] = 'El email es obligatorio';
-    } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-        $errors[] = 'El formato del email es inválido';
-    }
+    $errors[] = 'El email es obligatorio';
+} elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+    $errors[] = 'El formato del email es inválido';
+} elseif (!checkdnsrr(substr(strrchr($email, "@"), 1), "MX")) {
+    $errors[] = 'El dominio del email no existe';
+}
 
     if (empty($password)) {
-        $errors[] = 'La contraseña es obligatoria';
-    } elseif (strlen($password) < 6) {
-        $errors[] = 'La contraseña debe tener al menos 6 caracteres';
-    } elseif ($password !== $password2) {
-        $errors[] = 'Las contraseñas no coinciden';
-    }
+    $errors[] = 'La contraseña es obligatoria';
+} elseif (strlen($password) < 8) {
+    $errors[] = 'La contraseña debe tener al menos 8 caracteres';
+} elseif (!preg_match('/[A-Z]/', $password)) {
+    $errors[] = 'La contraseña debe contener al menos una mayúscula';
+} elseif (!preg_match('/[a-z]/', $password)) {
+    $errors[] = 'La contraseña debe contener al menos una minúscula';
+} elseif (!preg_match('/[0-9]/', $password)) {
+    $errors[] = 'La contraseña debe contener al menos un número';
+}
 
     // Validar obra social
     if ($idObra === -1) {

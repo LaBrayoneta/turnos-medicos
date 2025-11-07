@@ -1,10 +1,10 @@
-}<?php
-// controllers/turnos_api.php - VERSIÓN CORREGIDA SIN SALIDA HTML
-// ✅ NO debe haber NADA antes de este <?php (ni espacios, ni BOM)
+<?php
+// controllers/turnos_api.php - VERSIÓN CORREGIDA
+// ✅ NO debe haber NADA antes de este <?php (ni espacios, ni BOM, ni caracteres extra)
 
-// ✅ Configuración de errores SOLO para logging, no para mostrar
+// ✅ Configuración de errores SOLO para logging
 error_reporting(E_ALL);
-ini_set('display_errors', '0'); // NO mostrar errores en pantalla
+ini_set('display_errors', '0');
 ini_set('log_errors', '1');
 ini_set('error_log', __DIR__ . '/../logs/php-errors.log');
 
@@ -237,6 +237,7 @@ if ($action === 'my_appointments') {
     
     if ($pacId<=0) json_out(['ok'=>true,'items'=>[]]);
     
+    // ✅ MODIFICADO: Agregar WHERE Estado != 'cancelado' y ORDER BY Fecha ASC (próximos primero)
     $st = $pdo->prepare("
       SELECT t.Id_turno, t.Fecha, t.Estado, t.Id_medico,
              um.Nombre AS MNombre, um.Apellido AS MApellido, 
@@ -245,8 +246,10 @@ if ($action === 'my_appointments') {
       LEFT JOIN medico m ON m.Id_medico = t.Id_medico
       LEFT JOIN usuario um ON um.Id_usuario = m.Id_usuario
       LEFT JOIN especialidad e ON e.Id_Especialidad = m.Id_Especialidad
-      WHERE t.Id_paciente = ?
-      ORDER BY t.Fecha DESC
+      WHERE t.Id_paciente = ? 
+        AND (t.Estado IS NULL OR t.Estado != 'cancelado')
+        AND t.Fecha >= NOW()
+      ORDER BY t.Fecha ASC
     ");
     $st->execute([$pacId]);
     
@@ -257,7 +260,7 @@ if ($action === 'my_appointments') {
         'Id_medico'=>(int)($r['Id_medico'] ?? 0),
         'fecha'=>$r['Fecha'],
         'fecha_fmt'=>date('d/m/Y H:i', strtotime($r['Fecha'])),
-        'estado'=>$r['Estado'] ?? '',
+        'estado'=>$r['Estado'] ?? 'reservado',
         'medico'=>trim(($r['MApellido'] ?? '').', '.($r['MNombre'] ?? '')),
         'especialidad'=>$r['Especialidad'] ?? '',
       ];

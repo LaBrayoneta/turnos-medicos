@@ -58,7 +58,82 @@
     const dayName = DIAS_ES[dateObj.getDay()];
     return currentMedicoData.horarios.some(h => h.Dia_semana === dayName);
   }
+// En index.js - Cache con expiración
 
+async function loadEspecialidades(){
+  console.log('🔄 Cargando especialidades...');
+  
+  if (!selEsp) return;
+  
+  // ✅ Intentar cargar desde cache (válido por 1 hora)
+  const CACHE_KEY = 'especialidades_cache';
+  const CACHE_DURATION = 3600000; // 1 hora en ms
+  
+  try {
+    const cached = localStorage.getItem(CACHE_KEY);
+    if (cached) {
+      const {data, timestamp} = JSON.parse(cached);
+      const age = Date.now() - timestamp;
+      
+      if (age < CACHE_DURATION) {
+        console.log('✅ Usando especialidades del cache');
+        especialidadesData = data;
+        renderEspecialidadesSelect(data);
+        return;
+      }
+    }
+  } catch(e) {
+    console.warn('⚠️ Error leyendo cache:', e);
+  }
+  
+  // Cache miss o expirado - cargar del servidor
+  selEsp.innerHTML = `<option value="">Cargando…</option>`;
+  selEsp.disabled = true;
+  
+  try {
+    const url = `${API_BASE}?action=specialties`;
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: {'Accept': 'application/json', 'Cache-Control': 'no-cache'}
+    });
+    
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    
+    const data = await res.json();
+    if(!data.ok) throw new Error(data.error || 'Error cargando');
+    
+    especialidadesData = data.items || [];
+    
+    // ✅ Guardar en cache
+    try {
+      localStorage.setItem(CACHE_KEY, JSON.stringify({
+        data: especialidadesData,
+        timestamp: Date.now()
+      }));
+    } catch(e) {
+      console.warn('⚠️ No se pudo guardar cache:', e);
+    }
+    
+    renderEspecialidadesSelect(especialidadesData);
+    
+  } catch (error) {
+    console.error('❌ Error:', error);
+    setMsg('Error de conexión: ' + error.message, false);
+    selEsp.innerHTML = `<option value="">Error - Refresca</option>`;
+  }
+}
+
+function renderEspecialidadesSelect(items) {
+  selEsp.innerHTML = `<option value="">Elegí especialidad…</option>`;
+  items.forEach(e=>{
+    const opt=document.createElement('option');
+    opt.value=e.Id_Especialidad; 
+    opt.textContent=e.Nombre;
+    selEsp.appendChild(opt);
+  });
+  selEsp.disabled = false;
+  console.log('✅ Especialidades cargadas:', items.length);
+}
   // ✅ MEJORADO: Carga de especialidades con mejor manejo de errores
   async function loadEspecialidades(){
     console.log('🔄 Cargando especialidades...');
@@ -272,39 +347,50 @@
   }
 
   function renderAppointments(rows){
-    if (!tblBody) return;
-    tblBody.innerHTML='';
+  if (!tblBody) return;
+  tblBody.innerHTML='';
+  
+  if (rows.length === 0) {
+    const tr = document.createElement('tr');
+    // ✅ MEJORADO: Mensaje más informativo
+    tr.innerHTML = `
+      <td colspan="5" style="text-align:center;padding:40px 20px">
+        <div style="color:var(--muted);font-size:16px;margin-bottom:12px">📅</div>
+        <div style="color:var(--text);font-weight:600;margin-bottom:8px">
+          No tenés turnos próximos
+        </div>
+        <div style="color:var(--muted);font-size:14px">
+          Reservá tu primera consulta usando el calendario
+        </div>
+      </td>
+    `;
+    tblBody.appendChild(tr);
+    return;
+  }
     
-    if (rows.length === 0) {
-      const tr = document.createElement('tr');
-      tr.innerHTML = '<td colspan="5" style="text-align:center;color:var(--muted)">No tenés turnos registrados</td>';
-      tblBody.appendChild(tr);
-      return;
-    }
-    
-    rows.forEach(r=>{
-      const tr=document.createElement('tr');
-      const acciones = (r.estado === 'reservado')
-        ? `<button class="btn ghost btn-cancel" data-id="${r.Id_turno}">Cancelar</button>
-           <button class="btn ghost btn-reprog" data-id="${r.Id_turno}" data-med="${r.Id_medico||''}">Elegir nuevo horario</button>`
-        : '';
-      tr.innerHTML = `
-        <td>${escapeHtml(r.fecha_fmt||'')}</td>
-        <td>${escapeHtml(r.medico||'')}</td>
-        <td>${escapeHtml(r.especialidad||'')}</td>
-        <td><span class="badge ${r.estado==='reservado'?'ok':'warn'}">${escapeHtml(r.estado||'')}</span></td>
-        <td class="row-actions">${acciones}</td>`;
-      tblBody.appendChild(tr);
-    });
+rows.forEach(r=>{
+    const tr=document.createElement('tr');
+    const acciones = (r.estado === 'reservado')
+      ? `<button class="btn ghost btn-cancel" data-id="${r.Id_turno}">Cancelar</button>
+         <button class="btn ghost btn-reprog" data-id="${r.Id_turno}" data-med="${r.Id_medico||''}">Elegir nuevo horario</button>`
+      : '';
+    tr.innerHTML = `
+      <td>${escapeHtml(r.fecha_fmt||'')}</td>
+      <td>${escapeHtml(r.medico||'')}</td>
+      <td>${escapeHtml(r.especialidad||'')}</td>
+      <td><span class="badge ${r.estado==='reservado'?'ok':'warn'}">${escapeHtml(r.estado||'')}</span></td>
+      <td class="row-actions">${acciones}</td>`;
+    tblBody.appendChild(tr);
+  });
 
-    tblBody.querySelectorAll('.btn-cancel').forEach(b=>{
-      b.addEventListener('click', ()=> onCancel(b.dataset.id));
-    });
-    
-    tblBody.querySelectorAll('.btn-reprog').forEach(b=>{
-      b.addEventListener('click', async ()=> {
-        selectedApptId = b.dataset.id;
-        const medId = b.dataset.med || '';
+ tblBody.querySelectorAll('.btn-cancel').forEach(b=>{
+    b.addEventListener('click', ()=> onCancel(b.dataset.id));
+  });
+  
+  tblBody.querySelectorAll('.btn-reprog').forEach(b=>{
+    b.addEventListener('click', async ()=> {
+      selectedApptId = b.dataset.id;
+      const medId = b.dataset.med || '';
         
         console.log('🔄 Reprogramando turno:', selectedApptId, 'Médico:', medId);
         
