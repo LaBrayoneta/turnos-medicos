@@ -1,7 +1,9 @@
+// admin.js - Panel Administrativo Mejorado (COMPLETO)
 (function(){
   const $ = s => document.querySelector(s);
   const $$ = s => document.querySelectorAll(s);
   const csrf = $('meta[name="csrf-token"]')?.getAttribute('content') || '';
+  const Utils = window.TurnosUtils;
 
   // Estado global
   let especialidades = [];
@@ -11,7 +13,7 @@
   let selectedTurnoId = null;
   let currentMedicoId = null;
 
-  // Elementos DOM
+  // Elementos DOM principales
   const createSecretariaForm = $('#createSecretariaForm');
   const createObraForm = $('#createObraForm');
   const tblMedicos = $('#tblMedicos');
@@ -61,18 +63,32 @@
   const formEditSecretaria = $('#formEditSecretaria');
   const btnCloseSecretariaModal = $('#btnCloseSecretariaModal');
 
-  // Utilidades
+  // ========== UTILIDADES ==========
   function esc(s){ return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-  function setMsg(el, t, ok=true){ 
-    if(!el) return; 
-    el.textContent=t||''; 
-    el.classList.remove('ok','err'); 
-    el.classList.add(ok?'ok':'err'); 
+  
+  function setMsg(el, t, ok=true){
+    if(!el) return;
+    el.textContent=t||'';
+    el.classList.remove('ok','err');
+    el.classList.add(ok?'ok':'err');
   }
+  
   function showModal(modal){ if(modal) modal.style.display='flex'; }
   function hideModal(modal){ if(modal) modal.style.display='none'; }
 
-  // Tabs
+  // ========== CONFIGURAR INPUTS DE FECHA ==========
+  function setupDateInputs() {
+    console.log('🔧 Configurando inputs de fecha...');
+    
+    if (fFrom) Utils.setupDateInput(fFrom);
+    if (fTo) Utils.setupDateInput(fTo);
+    if (newDate) Utils.setupDateInput(newDate);
+    if (turnoDate) Utils.setupDateInput(turnoDate);
+    
+    console.log('✅ Inputs configurados');
+  }
+
+  // ========== TABS ==========
   $$('.tab').forEach(t=>{
     t.addEventListener('click', ()=>{
       $$('section.card').forEach(sec=>sec.classList.add('hidden'));
@@ -94,7 +110,6 @@
       secretariasData = data.secretarias || [];
       obrasSocialesData = data.obras_sociales || [];
 
-      // Llenar selects de especialidad
       const espSelects = ['#espCreateSelect', '#fEsp', '#editMedEsp'];
       espSelects.forEach(sel => {
         const element = $(sel);
@@ -111,6 +126,7 @@
       renderMedicos(medicosData);
       renderSecretarias(secretariasData);
       renderObras(obrasSocialesData);
+      setupDateInputs();
     } catch (e) {
       console.error('Error en loadInit', e);
       alert('Error cargando datos iniciales');
@@ -152,7 +168,7 @@
 
         const res = await fetch('admin.php', { method:'POST', body:fd, headers:{ 'Accept':'application/json' }});
         const data = await res.json();
-        if (!data.ok) throw new Error(data.error || 'Error creando obra social');
+        if (!data.ok) throw new Error(data.error || 'Error');
         setMsg(msgCreateObra, data.msg || 'Obra social creada', true);
         createObraForm.reset();
         await loadInit();
@@ -171,7 +187,7 @@
 
       const res = await fetch('admin.php', { method:'POST', body:fd, headers:{ 'Accept':'application/json' }});
       const data = await res.json();
-      if (!data.ok) throw new Error(data.error || 'Error cambiando estado');
+      if (!data.ok) throw new Error(data.error || 'Error');
       
       setMsg(msgCreateObra, data.msg || 'Estado actualizado', true);
       await loadInit();
@@ -190,7 +206,7 @@
 
       const res = await fetch('admin.php', { method:'POST', body:fd, headers:{ 'Accept':'application/json' }});
       const data = await res.json();
-      if (!data.ok) throw new Error(data.error || 'Error eliminando');
+      if (!data.ok) throw new Error(data.error || 'Error');
       
       setMsg(msgCreateObra, data.msg || 'Obra social eliminada', true);
       await loadInit();
@@ -200,41 +216,27 @@
   }
 
   // ========== MÉDICOS ==========
-  function formatHour12(time24) {
-    if (!time24) return '';
-    const [hours, minutes] = time24.split(':');
-    let h = parseInt(hours);
-    const ampm = h >= 12 ? 'PM' : 'AM';
-    h = h % 12 || 12;
-    return `${h}:${minutes} ${ampm}`;
-  }
-
   function renderMedicos(rows){
     if(!tblMedicos) return;
     tblMedicos.innerHTML='';
     rows.forEach(r=>{
       const tr=document.createElement('tr');
       
-      // Construir resumen de horarios mejorado con AM/PM
       let horariosHTML = '<div style="display:flex;flex-direction:column;gap:4px">';
       if (r.horarios && r.horarios.length > 0) {
-        // Agrupar por día
         const horariosPorDia = {};
         r.horarios.forEach(h => {
-          if (!horariosPorDia[h.Dia_semana]) {
-            horariosPorDia[h.Dia_semana] = [];
-          }
+          if (!horariosPorDia[h.Dia_semana]) horariosPorDia[h.Dia_semana] = [];
           horariosPorDia[h.Dia_semana].push({
             inicio: h.Hora_inicio.substring(0,5),
             fin: h.Hora_fin.substring(0,5)
           });
         });
         
-        // Renderizar cada día con sus horarios en formato 12h
         Object.entries(horariosPorDia).forEach(([dia, horarios]) => {
           const diaCapital = dia.charAt(0).toUpperCase() + dia.slice(1);
           const horariosStr = horarios.map(h => 
-            `${formatHour12(h.inicio)}-${formatHour12(h.fin)}`
+            `${Utils.formatHour12(h.inicio)}-${Utils.formatHour12(h.fin)}`
           ).join(', ');
           horariosHTML += `<span style="font-size:12px;color:var(--muted)">
             <strong style="color:var(--primary)">${diaCapital}:</strong> ${horariosStr}
@@ -264,10 +266,7 @@
 
   function openEditMedico(id){
     const medico = medicosData.find(m => m.Id_medico == id);
-    if (!medico) {
-      alert('Médico no encontrado');
-      return;
-    }
+    if (!medico) {alert('Médico no encontrado'); return;}
 
     $('#editMedId').value = medico.Id_medico;
     $('#editMedNombre').value = medico.Nombre || '';
@@ -276,7 +275,6 @@
     $('#editMedLegajo').value = medico.Legajo || '';
     $('#editMedEsp').value = medico.Id_Especialidad || '';
 
-    // Cargar horarios usando la función global
     if (window.loadMedicoHorarios) {
       window.loadMedicoHorarios(medico.horarios || []);
     }
@@ -294,7 +292,7 @@
 
       const res = await fetch('admin.php', { method:'POST', body:fd, headers:{ 'Accept':'application/json' }});
       const data = await res.json();
-      if (!data.ok) throw new Error(data.error || 'Error eliminando');
+      if (!data.ok) throw new Error(data.error || 'Error');
       
       alert('✅ Médico eliminado');
       await loadInit();
@@ -374,7 +372,7 @@
 
         const res = await fetch('admin.php', { method:'POST', body:fd, headers:{ 'Accept':'application/json' }});
         const data = await res.json();
-        if (!data.ok) throw new Error(data.error || 'Error actualizando');
+        if (!data.ok) throw new Error(data.error || 'Error');
         
         setMsg(msgEl, data.msg || 'Secretaria actualizada', true);
         setTimeout(()=>{ hideModal(modalEditSecretaria); loadInit(); }, 1000);
@@ -394,7 +392,7 @@
 
       const res = await fetch('admin.php', { method:'POST', body:fd, headers:{ 'Accept':'application/json' }});
       const data = await res.json();
-      if (!data.ok) throw new Error(data.error || 'Error eliminando');
+      if (!data.ok) throw new Error(data.error || 'Error');
       
       setMsg(msgCreateSec, data.msg || 'Secretaria eliminada', true);
       await loadInit();
@@ -407,71 +405,86 @@
   
   async function loadDocs(espId){
     if(!fMed) return;
-    fMed.innerHTML = `<option value="">Cargando…</option>`; 
+    fMed.innerHTML = `<option value="">Cargando…</option>`;
     fMed.disabled=true;
     if(btnNewTurno) btnNewTurno.disabled=true;
     try {
       const r = await fetch(`admin.php?fetch=doctors&especialidad_id=${encodeURIComponent(espId)}`, { headers:{ 'Accept':'application/json' }});
       const data = await r.json();
-      if(!data.ok) { setMsg(msgTurns, data.error||'Error cargando médicos', false); return; }
+      if(!data.ok) { setMsg(msgTurns, data.error||'Error', false); return; }
       fMed.innerHTML = `<option value="">Elegí médico…</option>`;
       (data.items||[]).forEach(m=>{
-        const opt = document.createElement('option'); 
-        opt.value=m.Id_medico; 
-        opt.textContent=`${m.Apellido}, ${m.Nombre}`; 
+        const opt = document.createElement('option');
+        opt.value=m.Id_medico;
+        opt.textContent=`${m.Apellido}, ${m.Nombre}`;
         fMed.appendChild(opt);
       });
       fMed.disabled = false;
-    } catch (e) { 
-      setMsg(msgTurns, 'Error cargando médicos', false); 
-      console.error(e); 
+    } catch (e) {
+      setMsg(msgTurns, 'Error', false);
+      console.error(e);
     }
   }
 
   async function loadAgenda(){
     setMsg(msgTurns, '');
-    if(tblAgendaBody) tblAgendaBody.innerHTML=''; 
+    if(tblAgendaBody) tblAgendaBody.innerHTML='';
     if(noData) noData.style.display='none';
     
-    if(!fMed || !fMed.value){ 
+    if(!fMed || !fMed.value){
       if(noData) {
-        noData.style.display='block'; 
-        noData.textContent='Seleccioná una especialidad y un médico.';
+        noData.style.display='block';
+        noData.textContent='Seleccioná un médico.';
       }
-      return; 
+      return;
+    }
+
+    if (fFrom.value) {
+      const validation = Utils.isValidTurnoDate(fFrom.value);
+      if (!validation.valid) {
+        setMsg(msgTurns, '❌ Fecha desde inválida: ' + validation.error, false);
+        fFrom.value = '';
+        return;
+      }
+    }
+
+    if (fTo.value) {
+      const validation = Utils.isValidTurnoDate(fTo.value);
+      if (!validation.valid) {
+        setMsg(msgTurns, '❌ Fecha hasta inválida: ' + validation.error, false);
+        fTo.value = '';
+        return;
+      }
     }
 
     currentMedicoId = fMed.value;
-    const qs = new URLSearchParams({ 
-      fetch:'agenda', 
-      medico_id:fMed.value, 
-      from:(fFrom.value||''), 
-      to:(fTo.value||'') 
+    const qs = new URLSearchParams({
+      fetch:'agenda',
+      medico_id:fMed.value,
+      from:(fFrom.value||''),
+      to:(fTo.value||'')
     });
 
     try {
       const r = await fetch(`admin.php?${qs.toString()}`, { headers:{ 'Accept':'application/json' }});
       const data = await r.json();
-      if(!data.ok){ 
-        setMsg(msgTurns, data.error||'Error cargando agenda', false); 
-        return; 
-      }
+      if(!data.ok){ setMsg(msgTurns, data.error||'Error', false); return; }
       renderAgenda(data.items||[]);
-    } catch (e) { 
-      setMsg(msgTurns, 'Error cargando agenda', false); 
-      console.error(e); 
+    } catch (e) {
+      setMsg(msgTurns, 'Error', false);
+      console.error(e);
     }
   }
 
   function renderAgenda(rows){
     if(!tblAgendaBody) return;
     tblAgendaBody.innerHTML='';
-    if (!rows.length){ 
+    if (!rows.length){
       if(noData) {
-        noData.style.display = 'block'; 
+        noData.style.display = 'block';
         noData.textContent = 'No se encontraron turnos.';
       }
-      return; 
+      return;
     }
     if(noData) noData.style.display = 'none';
     
@@ -479,7 +492,9 @@
       const reservado = (r.estado==='reservado');
       const tr = document.createElement('tr');
       tr.innerHTML = `
-        <td>${esc(r.fecha_fmt||'')}</td>
+        <td>
+          <div style="font-weight:600">${esc(r.fecha_fmt||'')}</div>
+        </td>
         <td>${esc(r.paciente||'')}</td>
         <td><span class="badge ${reservado?'ok':'warn'}">${esc(r.estado||'')}</span></td>
         <td class="row-actions">
@@ -507,12 +522,12 @@
             newDate.value='';
           }
           if(newTime) {
-            newTime.disabled=true; 
+            newTime.disabled=true;
             newTime.innerHTML=`<option value="">Elegí fecha…</option>`;
           }
           if(btnReprog) btnReprog.disabled=true;
         }
-        setMsg(msgTurns, '🔄 Seleccioná nueva fecha y horario para reprogramar');
+        setMsg(msgTurns, '🔄 Seleccioná nueva fecha y horario');
         reprogSection?.scrollIntoView({behavior:'smooth', block:'center'});
       });
     });
@@ -521,119 +536,140 @@
   async function cancelTurno(id){
     if (!confirm('¿Cancelar este turno?')) return;
     try {
-      const fd = new FormData(); 
-      fd.append('action','cancel_turno'); 
-      fd.append('turno_id', id); 
+      const fd = new FormData();
+      fd.append('action','cancel_turno');
+      fd.append('turno_id', id);
       fd.append('csrf_token', csrf);
       
       const r = await fetch('admin.php', { method:'POST', body:fd, headers:{ 'Accept':'application/json' }});
-      const data = await r.json(); 
-      if(!data.ok) throw new Error(data.error||'No se pudo cancelar');
+      const data = await r.json();
+      if(!data.ok) throw new Error(data.error||'Error');
       
-      setMsg(msgTurns, '✅ Turno cancelado', true); 
+      setMsg(msgTurns, '✅ Turno cancelado', true);
       await loadAgenda();
-    } catch (e) { 
-      setMsg(msgTurns, e.message, false); 
+    } catch (e) {
+      setMsg(msgTurns, e.message, false);
     }
   }
 
   async function deleteTurno(id){
-    if (!confirm('¿ELIMINAR este turno permanentemente? Esta acción no se puede deshacer.')) return;
+    if (!confirm('¿ELIMINAR permanentemente? No se puede deshacer.')) return;
     try {
-      const fd = new FormData(); 
-      fd.append('action','delete_turno'); 
-      fd.append('turno_id', id); 
+      const fd = new FormData();
+      fd.append('action','delete_turno');
+      fd.append('turno_id', id);
       fd.append('csrf_token', csrf);
       
       const r = await fetch('admin.php', { method:'POST', body:fd, headers:{ 'Accept':'application/json' }});
-      const data = await r.json(); 
-      if(!data.ok) throw new Error(data.error||'No se pudo eliminar');
+      const data = await r.json();
+      if(!data.ok) throw new Error(data.error||'Error');
       
-      setMsg(msgTurns, '✅ Turno eliminado', true); 
+      setMsg(msgTurns, '✅ Turno eliminado', true);
       await loadAgenda();
-    } catch (e) { 
-      setMsg(msgTurns, e.message, false); 
+    } catch (e) {
+      setMsg(msgTurns, e.message, false);
     }
   }
 
   newDate?.addEventListener('change', async ()=>{
-    setMsg(msgTurns, ''); 
+    setMsg(msgTurns, '');
+    
+    if (newDate.value) {
+      const validation = Utils.isValidTurnoDate(newDate.value);
+      if (!validation.valid) {
+        setMsg(msgTurns, '❌ ' + validation.error, false);
+        newDate.value = '';
+        return;
+      }
+    }
+    
     if(newTime) {
-      newTime.innerHTML=`<option value="">Cargando…</option>`; 
+      newTime.innerHTML=`<option value="">Cargando…</option>`;
       newTime.disabled=true;
     }
     if(btnReprog) btnReprog.disabled=true;
     
-    if(!newDate.value || !currentMedicoId){ 
-      if(newTime) newTime.innerHTML=`<option value="">Elegí fecha…</option>`; 
-      return; 
+    if(!newDate.value || !currentMedicoId){
+      if(newTime) newTime.innerHTML=`<option value="">Elegí fecha…</option>`;
+      return;
     }
     
-    const qs = new URLSearchParams({ 
-      fetch:'slots', 
-      date:newDate.value, 
-      medico_id:currentMedicoId 
+    const qs = new URLSearchParams({
+      fetch:'slots',
+      date:newDate.value,
+      medico_id:currentMedicoId
     });
     
     try {
       const r = await fetch(`admin.php?${qs.toString()}`, { headers:{ 'Accept':'application/json' }});
       const data = await r.json();
-      if(!data.ok) { 
-        setMsg(msgTurns, data.error||'Error cargando horarios', false); 
-        if(newTime) newTime.innerHTML=`<option value="">Error</option>`; 
-        return; 
+      if(!data.ok) {
+        setMsg(msgTurns, data.error||'Error', false);
+        if(newTime) newTime.innerHTML=`<option value="">Error</option>`;
+        return;
       }
       if(newTime) {
         newTime.innerHTML = `<option value="">Elegí horario…</option>`;
-        (data.slots||[]).forEach(h => { 
-          const opt=document.createElement('option'); 
-          opt.value=h; 
-          opt.textContent=h; 
-          newTime.appendChild(opt); 
+        (data.slots||[]).forEach(h => {
+          const opt=document.createElement('option');
+          opt.value=h;
+          opt.textContent=Utils.formatHour12(h);
+          newTime.appendChild(opt);
         });
         newTime.disabled = false;
       }
-    } catch (e) { 
-      setMsg(msgTurns, 'Error cargando horarios', false); 
-      console.error(e); 
+    } catch (e) {
+      setMsg(msgTurns, 'Error', false);
+      console.error(e);
     }
   });
 
-  newTime?.addEventListener('change', ()=> { 
-    if(btnReprog) btnReprog.disabled = !(selectedTurnoId && newDate?.value && newTime?.value); 
+  newTime?.addEventListener('change', ()=> {
+    if(btnReprog) btnReprog.disabled = !(selectedTurnoId && newDate?.value && newTime?.value);
   });
 
   btnReprog?.addEventListener('click', async ()=>{
-    if(!selectedTurnoId || !currentMedicoId || !newDate?.value || !newTime?.value){ 
-      setMsg(msgTurns, 'Completá turno, fecha y hora', false); 
-      return; 
+    if(!selectedTurnoId || !currentMedicoId || !newDate?.value || !newTime?.value){
+      setMsg(msgTurns, 'Completá todos los campos', false);
+      return;
+    }
+    
+    const validation = Utils.isValidTurnoDate(newDate.value);
+    if (!validation.valid) {
+      setMsg(msgTurns, '❌ ' + validation.error, false);
+      alert('⚠️ ' + validation.error);
+      return;
+    }
+    
+    if (!confirm(`¿Reprogramar turno?\n\n📅 ${Utils.formatDateDisplay(newDate.value)}\n🕐 ${Utils.formatHour12(newTime.value)}`)) {
+      return;
     }
     
     try {
       const fd = new FormData();
-      fd.append('action','reschedule_turno'); 
-      fd.append('turno_id', selectedTurnoId); 
+      fd.append('action','reschedule_turno');
+      fd.append('turno_id', selectedTurnoId);
       fd.append('medico_id', currentMedicoId);
-      fd.append('date', newDate.value); 
-      fd.append('time', newTime.value); 
+      fd.append('date', newDate.value);
+      fd.append('time', newTime.value);
       fd.append('csrf_token', csrf);
       
       const r = await fetch('admin.php', { method:'POST', body:fd, headers:{ 'Accept':'application/json' }});
-      const data = await r.json(); 
-      if(!data.ok) throw new Error(data.error||'No se pudo reprogramar');
+      const data = await r.json();
+      if(!data.ok) throw new Error(data.error||'Error');
       
-      setMsg(msgTurns, '✅ Turno reprogramado', true); 
-      selectedTurnoId=null; 
-      if(btnReprog) btnReprog.disabled=true; 
+      setMsg(msgTurns, '✅ Turno reprogramado', true);
+      selectedTurnoId=null;
+      if(btnReprog) btnReprog.disabled=true;
       if(reprogSection) reprogSection.style.display='none';
-      await loadAgenda(); 
+      await loadAgenda();
       if(newTime) {
-        newTime.innerHTML=`<option value="">Elegí fecha…</option>`; 
+        newTime.innerHTML=`<option value="">Elegí fecha…</option>`;
         newTime.disabled=true;
       }
       if(newDate) newDate.value='';
-    } catch (e) { 
-      setMsg(msgTurns, e.message, false); 
+    } catch (e) {
+      setMsg(msgTurns, e.message, false);
     }
   });
 
@@ -680,7 +716,7 @@
           headers:{ 'Accept':'application/json' }
         });
         const data = await res.json();
-        if (!data.ok) throw new Error(data.error || 'Error buscando');
+        if (!data.ok) throw new Error(data.error || 'Error');
         
         renderPacienteResults(data.items || []);
       } catch (e) {
@@ -722,9 +758,15 @@
     const turnoTimeSelect = document.getElementById('turnoTime');
     const medicoIdInput = document.getElementById('turnoMedicoId');
     
-    if (!turnoTimeSelect) {
-      console.error('❌ No se encontró el select turnoTime');
-      return;
+    if (!turnoTimeSelect) return;
+    
+    if (turnoDate.value) {
+      const validation = Utils.isValidTurnoDate(turnoDate.value);
+      if (!validation.valid) {
+        setMsg(msgModal, '❌ ' + validation.error, false);
+        turnoDate.value = '';
+        return;
+      }
     }
     
     turnoTimeSelect.innerHTML = `<option value="">Cargando…</option>`;
@@ -734,12 +776,12 @@
     const fechaSeleccionada = turnoDate.value;
     
     if (!fechaSeleccionada) {
-      turnoTimeSelect.innerHTML = `<option value="">Elegí una fecha primero</option>`;
+      turnoTimeSelect.innerHTML = `<option value="">Elegí fecha</option>`;
       return;
     }
     
     if (!medicoId) {
-      turnoTimeSelect.innerHTML = `<option value="">Error: no hay médico seleccionado</option>`;
+      turnoTimeSelect.innerHTML = `<option value="">Error: sin médico</option>`;
       return;
     }
 
@@ -750,21 +792,15 @@
         headers: { 'Accept': 'application/json' }
       });
       
-      if (!res.ok) {
-        throw new Error(`HTTP error! status: ${res.status}`);
-      }
-      
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      
-      if (!data.ok) {
-        throw new Error(data.error || 'Error cargando horarios');
-      }
+      if (!data.ok) throw new Error(data.error || 'Error');
       
       const slots = data.slots || [];
       
       if (slots.length === 0) {
-        turnoTimeSelect.innerHTML = `<option value="">No hay horarios disponibles</option>`;
-        setMsg(msgModal, 'No hay horarios disponibles para esta fecha', false);
+        turnoTimeSelect.innerHTML = `<option value="">Sin horarios</option>`;
+        setMsg(msgModal, 'No hay horarios disponibles', false);
         return;
       }
       
@@ -772,16 +808,16 @@
       slots.forEach(slot => {
         const opt = document.createElement('option');
         opt.value = slot;
-        opt.textContent = slot;
+        opt.textContent = Utils.formatHour12(slot);
         turnoTimeSelect.appendChild(opt);
       });
       
       turnoTimeSelect.disabled = false;
       
     } catch (e) {
-      console.error('❌ Error cargando horarios:', e);
+      console.error('Error:', e);
       setMsg(msgModal, 'Error: ' + e.message, false);
-      turnoTimeSelect.innerHTML = `<option value="">Error al cargar</option>`;
+      turnoTimeSelect.innerHTML = `<option value="">Error</option>`;
     }
   });
 
@@ -794,18 +830,32 @@
     const time = turnoTime.value;
 
     if (!pacId || pacId === '') {
-      setMsg(msgModal, '❌ Seleccioná un paciente de la lista', false);
-      alert('Debés buscar y hacer click en un paciente de la lista');
+      setMsg(msgModal, '❌ Seleccioná un paciente', false);
+      alert('Debés buscar y hacer click en un paciente');
       return;
     }
     if (!date || date === '') {
       setMsg(msgModal, '❌ Seleccioná una fecha', false);
       return;
     }
+    
+    const validation = Utils.isValidTurnoDate(date);
+    if (!validation.valid) {
+      setMsg(msgModal, '❌ ' + validation.error, false);
+      alert('⚠️ ' + validation.error);
+      return;
+    }
+    
     if (!time || time === '') {
       setMsg(msgModal, '❌ Seleccioná un horario', false);
       return;
     }
+    
+    const pacienteNombre = selectedPacienteInfo.textContent.split('\n')[0];
+    if (!confirm(`¿Crear turno?\n\nPaciente: ${pacienteNombre}\n📅 ${Utils.formatDateDisplay(date)}\n🕐 ${Utils.formatHour12(time)}`)) {
+      return;
+    }
+    
     try {
       const fd = new FormData();
       fd.append('action', 'create_turno');
@@ -817,7 +867,7 @@
 
       const res = await fetch('admin.php', { method:'POST', body:fd, headers:{ 'Accept':'application/json' }});
       const data = await res.json();
-      if (!data.ok) throw new Error(data.error || 'Error creando turno');
+      if (!data.ok) throw new Error(data.error || 'Error');
 
       setMsg(msgModal, '✅ ' + (data.msg || 'Turno creado'), true);
       setTimeout(()=>{
@@ -829,7 +879,7 @@
     }
   });
 
-  // Cerrar modales
+  // ========== CERRAR MODALES ==========
   btnCloseModal?.addEventListener('click', ()=> hideModal(modalCreateTurno));
   btnCloseMedicoModal?.addEventListener('click', ()=> hideModal(modalEditMedico));
   btnCloseSecretariaModal?.addEventListener('click', ()=> hideModal(modalEditSecretaria));
@@ -843,60 +893,63 @@
   // ========== EVENTOS FILTROS ==========
   
   btnRefresh?.addEventListener('click', loadAgenda);
-  btnClearDates?.addEventListener('click', ()=>{ 
-    if(fFrom) fFrom.value=''; 
-    if(fTo) fTo.value=''; 
-    loadAgenda(); 
+  
+  btnClearDates?.addEventListener('click', ()=>{
+    if(fFrom) fFrom.value='';
+    if(fTo) fTo.value='';
+    loadAgenda();
   });
 
   fEsp?.addEventListener('change', async ()=>{
-    setMsg(msgTurns, ''); 
-    if(tblAgendaBody) tblAgendaBody.innerHTML=''; 
+    setMsg(msgTurns, '');
+    if(tblAgendaBody) tblAgendaBody.innerHTML='';
     if(noData) {
       noData.style.display='block';
-      noData.textContent='Seleccioná un médico para ver sus turnos.';
+      noData.textContent='Seleccioná un médico.';
     }
-    selectedTurnoId=null; 
-    if(btnReprog) btnReprog.disabled=true; 
+    selectedTurnoId=null;
+    if(btnReprog) btnReprog.disabled=true;
     if(reprogSection) reprogSection.style.display='none';
-    if(newDate) newDate.value=''; 
+    if(newDate) newDate.value='';
     if(newTime) {
-      newTime.innerHTML=`<option value="">Elegí fecha…</option>`; 
+      newTime.innerHTML=`<option value="">Elegí fecha…</option>`;
       newTime.disabled=true;
     }
     currentMedicoId = null;
     if(btnNewTurno) btnNewTurno.disabled = true;
     
-    if(!fEsp.value){ 
+    if(!fEsp.value){
       if(fMed) {
-        fMed.innerHTML=`<option value="">Elegí especialidad…</option>`; 
+        fMed.innerHTML=`<option value="">Elegí especialidad…</option>`;
         fMed.disabled=true;
       }
-      if(noData) noData.textContent='Seleccioná una especialidad primero.';
-      return; 
+      if(noData) noData.textContent='Seleccioná una especialidad.';
+      return;
     }
     await loadDocs(fEsp.value);
   });
 
-  fMed?.addEventListener('change', async ()=>{ 
-    setMsg(msgTurns, ''); 
+  fMed?.addEventListener('change', async ()=>{
+    setMsg(msgTurns, '');
     if(reprogSection) reprogSection.style.display='none';
-    if(newDate) newDate.value=''; 
+    if(newDate) newDate.value='';
     if(newTime) {
-      newTime.innerHTML=`<option value="">Elegí fecha…</option>`; 
+      newTime.innerHTML=`<option value="">Elegí fecha…</option>`;
       newTime.disabled=true;
     }
     currentMedicoId = fMed.value || null;
     if(btnNewTurno) btnNewTurno.disabled = !currentMedicoId;
-    await loadAgenda(); 
+    await loadAgenda();
   });
 
-  fFrom?.addEventListener('change', loadAgenda); 
+  fFrom?.addEventListener('change', loadAgenda);
   fTo?.addEventListener('change', loadAgenda);
 
   // ========== INICIAL ==========
   (async function init(){
+    console.log('🚀 Inicializando panel admin');
     await loadInit();
+    console.log('✅ Panel listo');
   })();
 
 })();

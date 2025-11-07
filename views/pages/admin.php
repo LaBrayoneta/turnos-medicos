@@ -3,87 +3,125 @@ session_start();
 require_once __DIR__ . '/../../config/db.php';
 
 function dbx(){ return db(); }
-function json_out($d,$c=200){ http_response_code($c); header('Content-Type: application/json; charset=utf-8'); echo json_encode($d, JSON_UNESCAPED_UNICODE); exit; }
+
+function json_out($d,$c=200){ 
+  http_response_code($c); 
+  header('Content-Type: application/json; charset=utf-8'); 
+  echo json_encode($d, JSON_UNESCAPED_UNICODE); 
+  exit; 
+}
+
 function ensure_csrf(){
   $t = $_POST['csrf_token'] ?? $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
-  if (!$t || !hash_equals($_SESSION['csrf_token'] ?? '', $t)) json_out(['ok'=>false,'error'=>'CSRF inválido'],400);
+  if (!$t || !hash_equals($_SESSION['csrf_token'] ?? '', $t)) {
+    json_out(['ok'=>false,'error'=>'CSRF inválido'],400);
+  }
 }
+
 function must_staff(PDO $pdo){
-  if (empty($_SESSION['Id_usuario'])) { header('Location: login.php'); exit; }
+  if (empty($_SESSION['Id_usuario'])) {
+    return [false, false, false, null, null];
+  }
+  
   $uid = (int)$_SESSION['Id_usuario'];
 
   $st = $pdo->prepare("SELECT Id_secretaria FROM secretaria WHERE Id_usuario=? LIMIT 1");
-  $st->execute([$uid]); $secData = $st->fetch(PDO::FETCH_ASSOC);
+  $st->execute([$uid]); 
+  $secData = $st->fetch(PDO::FETCH_ASSOC);
   $isSec = (bool)$secData;
 
   $st = $pdo->prepare("SELECT Id_medico FROM medico WHERE Id_usuario=? LIMIT 1");
-  $st->execute([$uid]); $me = $st->fetch(PDO::FETCH_ASSOC);
+  $st->execute([$uid]); 
+  $me = $st->fetch(PDO::FETCH_ASSOC);
   $isMed = (bool)$me;
 
-  if (!$isSec && !$isMed) { http_response_code(403); echo "Acceso restringido"; exit; }
-  return [$uid,$isSec,$isMed, $me ? (int)$me['Id_medico'] : null, $secData ? (int)$secData['Id_secretaria'] : null];
+  if (!$isSec && !$isMed) {
+    return [false, false, false, null, null];
+  }
+  
+  return [$uid, $isSec, $isMed, $me ? (int)$me['Id_medico'] : null, $secData ? (int)$secData['Id_secretaria'] : null];
 }
+
 function weekday_name_es($ymd){
   $w = (int)date('N', strtotime($ymd));
   $map = [1=>'lunes',2=>'martes',3=>'miercoles',4=>'jueves',5=>'viernes',6=>'sabado',7=>'domingo'];
   return $map[$w] ?? '';
 }
 
-
-
-if (empty($_SESSION['csrf_token'])) $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+// Generar CSRF token
+if (empty($_SESSION['csrf_token'])) {
+  $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
 $csrf = $_SESSION['csrf_token'];
+
 $pdo = dbx();
 
-// ======= API =======
+// ======= API - ESTO DEBE IR ANTES DEL HTML =======
 if (isset($_GET['fetch']) || isset($_POST['action'])) {
   [$uid,$isSec,$isMed,$myMedId,$mySecId] = must_staff($pdo);
+  
+  // Si no está autorizado, devolver error JSON
+  if (!$uid) {
+    json_out(['ok'=>false,'error'=>'No autorizado'], 403);
+  }
 
   // Init - Cargar todos los datos iniciales
   if (($_GET['fetch'] ?? '') === 'init') {
-    $esps = $pdo->query("SELECT Id_Especialidad, Nombre FROM especialidad WHERE Activo=1 ORDER BY Nombre")->fetchAll(PDO::FETCH_ASSOC);
-    
-    $meds = $pdo->query("
-      SELECT m.Id_medico, u.Apellido, u.Nombre, u.dni, u.email, e.Nombre AS Especialidad, m.Legajo, 
-             m.Id_Especialidad
-      FROM medico m
-      JOIN usuario u ON u.Id_usuario=m.Id_usuario
-      LEFT JOIN especialidad e ON e.Id_Especialidad=m.Id_Especialidad
-      WHERE m.Activo=1
-      ORDER BY u.Apellido,u.Nombre
-    ")->fetchAll(PDO::FETCH_ASSOC);
-    
-    // Obtener horarios para cada médico
-    foreach($meds as &$med) {
-      $st = $pdo->prepare("
-        SELECT Dia_semana, Hora_inicio, Hora_fin 
-        FROM horario_medico 
-        WHERE Id_medico=? 
-        ORDER BY FIELD(Dia_semana, 'lunes','martes','miercoles','jueves','viernes','sabado','domingo'), Hora_inicio
-      ");
-      $st->execute([$med['Id_medico']]);
-      $med['horarios'] = $st->fetchAll(PDO::FETCH_ASSOC);
+    try {
+      $esps = $pdo->query("SELECT Id_Especialidad, Nombre FROM especialidad WHERE Activo=1 ORDER BY Nombre")->fetchAll(PDO::FETCH_ASSOC);
       
-      // Construir string de días disponibles
-      $dias = array_unique(array_map(fn($h)=>$h['Dia_semana'], $med['horarios']));
-      $med['Dias_Disponibles'] = implode(',', $dias);
+      $meds = $pdo->query("
+        SELECT m.Id_medico, u.Apellido, u.Nombre, u.dni, u.email, e.Nombre AS Especialidad, m.Legajo, 
+               m.Id_Especialidad
+        FROM medico m
+        JOIN usuario u ON u.Id_usuario=m.Id_usuario
+        LEFT JOIN especialidad e ON e.Id_Especialidad=m.Id_Especialidad
+        WHERE m.Activo=1
+        ORDER BY u.Apellido,u.Nombre
+      ")->fetchAll(PDO::FETCH_ASSOC);
+      
+      // Obtener horarios para cada médico
+      foreach($meds as &$med) {
+        $st = $pdo->prepare("
+          SELECT Dia_semana, Hora_inicio, Hora_fin 
+          FROM horario_medico 
+          WHERE Id_medico=? 
+          ORDER BY FIELD(Dia_semana, 'lunes','martes','miercoles','jueves','viernes','sabado','domingo'), Hora_inicio
+        ");
+        $st->execute([$med['Id_medico']]);
+        $med['horarios'] = $st->fetchAll(PDO::FETCH_ASSOC);
+        
+        // Construir string de días disponibles
+        $dias = array_unique(array_map(fn($h)=>$h['Dia_semana'], $med['horarios']));
+        $med['Dias_Disponibles'] = implode(',', $dias);
+      }
+      
+      $secs = $pdo->query("
+        SELECT s.Id_secretaria, u.Apellido, u.Nombre, u.dni, u.email, u.Id_usuario
+        FROM secretaria s
+        JOIN usuario u ON u.Id_usuario=s.Id_usuario
+        WHERE s.Activo=1
+        ORDER BY u.Apellido,u.Nombre
+      ")->fetchAll(PDO::FETCH_ASSOC);
+      
+      $obras = $pdo->query("
+        SELECT Id_obra_social, Nombre, Activo 
+        FROM obra_social 
+        ORDER BY Nombre
+      ")->fetchAll(PDO::FETCH_ASSOC);
+      
+      json_out([
+        'ok'=>true,
+        'especialidades'=>$esps,
+        'medicos'=>$meds,
+        'secretarias'=>$secs,
+        'obras_sociales'=>$obras,
+        'csrf'=>$csrf
+      ]);
+    } catch (Throwable $e) {
+      error_log('Error en init: ' . $e->getMessage());
+      json_out(['ok'=>false,'error'=>'Error cargando datos: ' . $e->getMessage()], 500);
     }
-    
-    $secs = $pdo->query("
-      SELECT s.Id_secretaria, u.Apellido, u.Nombre, u.dni, u.email, u.Id_usuario
-      FROM secretaria s
-      JOIN usuario u ON u.Id_usuario=s.Id_usuario
-      WHERE s.Activo=1
-      ORDER BY u.Apellido,u.Nombre
-    ")->fetchAll(PDO::FETCH_ASSOC);
-    
-    $obras = $pdo->query("
-      SELECT Id_obra_social, Nombre, Activo 
-      FROM obra_social 
-      ORDER BY Nombre
-    ")->fetchAll(PDO::FETCH_ASSOC);
-    
-    json_out(['ok'=>true,'especialidades'=>$esps,'medicos'=>$meds,'secretarias'=>$secs,'obras_sociales'=>$obras,'csrf'=>$csrf]);
   }
 
   // ========== OBRAS SOCIALES ==========
@@ -131,7 +169,7 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
       $check = $pdo->prepare("SELECT COUNT(*) FROM paciente WHERE Id_obra_social=?");
       $check->execute([$id]);
       if ($check->fetchColumn() > 0) {
-        throw new Exception('No se puede eliminar: hay pacientes asociados a esta obra social');
+        throw new Exception('No se puede eliminar: hay pacientes asociados');
       }
       
       $stmt = $pdo->prepare("DELETE FROM obra_social WHERE Id_obra_social=?");
@@ -158,11 +196,12 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
       $legajo = trim($_POST['legajo'] ?? '');
       $idEsp = intval($_POST['especialidad'] ?? 0);
       
-      // Horarios: recibir array de horarios
       $horariosJson = $_POST['horarios'] ?? '[]';
       $horarios = json_decode($horariosJson, true);
       
-      if (!$nombre || !$apellido || !$dni || !$email || !$legajo || !$idEsp) throw new Exception('Faltan campos');
+      if (!$nombre || !$apellido || !$dni || !$email || !$legajo || !$idEsp) {
+        throw new Exception('Faltan campos obligatorios');
+      }
       if (empty($horarios)) throw new Exception('Debe agregar al menos un horario');
 
       $pdo->beginTransaction();
@@ -175,7 +214,6 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
       $stmt->execute([$legajo, $idUsuario, $idEsp]);
       $idMedico = $pdo->lastInsertId();
 
-      // Insertar horarios
       $stmtHorario = $pdo->prepare("
         INSERT INTO horario_medico (Id_medico, Dia_semana, Hora_inicio, Hora_fin) 
         VALUES (?, ?, ?, ?)
@@ -185,7 +223,7 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
       }
 
       $pdo->commit();
-      json_out(['ok'=>true,'msg'=>'Médico creado']);
+      json_out(['ok'=>true,'msg'=>'Médico creado exitosamente']);
     } catch (Throwable $e) {
       if ($pdo->inTransaction()) $pdo->rollBack();
       json_out(['ok'=>false,'error'=>$e->getMessage()],500);
@@ -220,7 +258,6 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
       $stmt = $pdo->prepare("UPDATE medico SET Legajo=?, Id_Especialidad=? WHERE Id_medico=?");
       $stmt->execute([$legajo, $idEsp, $idMed]);
 
-      // Eliminar horarios antiguos e insertar nuevos
       $pdo->prepare("DELETE FROM horario_medico WHERE Id_medico=?")->execute([$idMed]);
       
       if (!empty($horarios)) {
@@ -557,8 +594,15 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
   json_out(['ok'=>false,'error'=>'Acción no soportada'],400);
 }
 
-// ======= HTML =======
+// ======= VALIDACIÓN DE ACCESO PARA HTML =======
 [$uid,$isSec,$isMed,$myMedId,$mySecId] = must_staff($pdo);
+
+// Si no está logueado o no es staff, redirigir
+if (!$uid) {
+  header('Location: login.php');
+  exit;
+}
+
 $nombre = $_SESSION['Nombre'] ?? '';
 $apellido = $_SESSION['Apellido'] ?? '';
 $rolTexto = $isSec ? 'Secretaría' : 'Médico';
@@ -571,91 +615,6 @@ $rolTexto = $isSec ? 'Secretaría' : 'Médico';
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="csrf-token" content="<?= htmlspecialchars($csrf) ?>">
   <link rel="stylesheet" href="../assets/css/admin.css">
-  <style>
-    .horario-item {
-      background: #0f172a;
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 12px;
-      margin-bottom: 8px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-    .horario-info {
-      flex: 1;
-      color: var(--text);
-      font-size: 14px;
-    }
-    .horario-info strong {
-      color: var(--primary);
-      text-transform: capitalize;
-    }
-    .btn-remove-horario {
-      padding: 6px 10px;
-      background: var(--err);
-      color: white;
-      border: none;
-      border-radius: 8px;
-      cursor: pointer;
-      font-size: 13px;
-      transition: all 0.2s;
-    }
-    .btn-remove-horario:hover {
-      transform: scale(1.05);
-      box-shadow: 0 2px 8px rgba(239,68,68,0.4);
-    }
-    .horarios-list {
-      max-height: 300px;
-      overflow-y: auto;
-      margin-bottom: 12px;
-    }
-    .horarios-list::-webkit-scrollbar {
-      width: 6px;
-    }
-    .horarios-list::-webkit-scrollbar-track {
-      background: #0b1220;
-      border-radius: 3px;
-    }
-    .horarios-list::-webkit-scrollbar-thumb {
-      background: var(--border);
-      border-radius: 3px;
-    }
-    .horarios-list::-webkit-scrollbar-thumb:hover {
-      background: var(--muted);
-    }
-    
-    /* Mejorar el input de fecha en modal crear turno */
-    #turnoDate {
-      cursor: pointer;
-    }
-    
-    /* Animación para los mensajes */
-    .msg {
-      animation: fadeInMsg 0.3s ease-in;
-    }
-    
-    @keyframes fadeInMsg {
-      from {
-        opacity: 0;
-        transform: translateY(-5px);
-      }
-      to {
-        opacity: 1;
-        transform: translateY(0);
-      }
-    }
-    
-    /* Mejorar botones en row-actions */
-    .row-actions .btn {
-      white-space: nowrap;
-    }
-    
-    /* Hacer que la tabla sea más legible */
-    .mini td:nth-child(5) {
-      min-width: 200px;
-    }
-  </style>
 </head>
 <body>
 <header class="hdr">
