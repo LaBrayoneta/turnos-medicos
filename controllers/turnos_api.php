@@ -1,43 +1,43 @@
 <?php
 // controllers/turnos_api.php - VERSIÓN CORREGIDA
-// ✅ NO debe haber NADA antes de este <?php (ni espacios, ni BOM, ni caracteres extra)
+// ✅ CRÍTICO: NO debe haber NADA antes de este <?php
 
-// ✅ Configuración de errores SOLO para logging
+// Configuración de errores
 error_reporting(E_ALL);
 ini_set('display_errors', '0');
 ini_set('log_errors', '1');
 ini_set('error_log', __DIR__ . '/../logs/php-errors.log');
 
-// ✅ Limpiar cualquier salida previa
+// Limpiar cualquier salida previa
 if (ob_get_level()) {
     ob_end_clean();
 }
 ob_start();
 
-// ✅ Iniciar sesión
+// Iniciar sesión
 session_start();
 
-// ✅ Incluir dependencias
+// Incluir dependencias
 require_once __DIR__ . '/../config/db.php';
 
-// ✅ Función para respuesta JSON limpia
+// Función para respuesta JSON limpia
 function json_out($data, $code=200){ 
-  // Limpiar buffer
   if (ob_get_level()) {
       ob_end_clean();
   }
   
-  // Enviar headers
   http_response_code($code); 
   header('Content-Type: application/json; charset=utf-8');
   header('X-Content-Type-Options: nosniff');
+  header('Access-Control-Allow-Origin: *');
+  header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
+  header('Access-Control-Allow-Headers: Content-Type, X-CSRF-Token');
   
-  // Enviar JSON
   echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); 
   exit; 
 }
 
-// ✅ Función para verificar login
+// Función para verificar login
 function require_login(){ 
   if (empty($_SESSION['Id_usuario'])) {
     json_out(['ok'=>false,'error'=>'No autenticado'], 401); 
@@ -45,7 +45,7 @@ function require_login(){
   return (int)$_SESSION['Id_usuario']; 
 }
 
-// ✅ Función para validar CSRF
+// Función para validar CSRF
 function ensure_csrf(){ 
   $t = $_POST['csrf_token'] ?? $_SERVER['HTTP_X_CSRF_TOKEN'] ?? ''; 
   if (!$t || !hash_equals($_SESSION['csrf_token'] ?? '', $t)) {
@@ -53,14 +53,14 @@ function ensure_csrf(){
   }
 }
 
-// ✅ Función para obtener nombre del día
+// Función para obtener nombre del día
 function get_day_name($ymd){
   $dias = ['domingo','lunes','martes','miercoles','jueves','viernes','sabado'];
   $w = (int)date('w', strtotime($ymd));
   return $dias[$w];
 }
 
-// ✅ Manejo de errores global
+// Manejo de errores global
 set_error_handler(function($errno, $errstr, $errfile, $errline) {
     error_log("PHP Error [$errno]: $errstr in $errfile on line $errline");
     json_out(['ok'=>false,'error'=>'Error interno del servidor'], 500);
@@ -71,21 +71,28 @@ set_exception_handler(function($e) {
     json_out(['ok'=>false,'error'=>'Error interno del servidor'], 500);
 });
 
-// ✅ Intentar conectar a BD
+// Intentar conectar a BD
 try {
     $pdo = db();
+    
+    // Verificar conexión
+    $pdo->query("SELECT 1");
+    
 } catch (Throwable $e) {
     error_log("Database connection error: " . $e->getMessage());
     json_out(['ok'=>false,'error'=>'Error de conexión a base de datos'], 500);
 }
 
-// ✅ Generar token CSRF si no existe
+// Generar token CSRF si no existe
 if (empty($_SESSION['csrf_token'])) {
     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 }
 
-// ✅ Obtener acción
+// Obtener acción
 $action = $_GET['action'] ?? ($_POST['action'] ?? '');
+
+// Log de petición
+error_log("Turnos API - Action: $action - User: " . ($_SESSION['Id_usuario'] ?? 'guest'));
 
 // ===============================================
 // ACCIONES PÚBLICAS (Sin requerir login)
@@ -94,8 +101,16 @@ $action = $_GET['action'] ?? ($_POST['action'] ?? '');
 // Listar especialidades
 if ($action === 'specialties') {
   try {
-    $rows = $pdo->query("SELECT Id_Especialidad, Nombre FROM especialidad WHERE Activo=1 ORDER BY Nombre")->fetchAll(PDO::FETCH_ASSOC);
+    $rows = $pdo->query("
+      SELECT Id_Especialidad, Nombre 
+      FROM especialidad 
+      WHERE Activo=1 
+      ORDER BY Nombre
+    ")->fetchAll(PDO::FETCH_ASSOC);
+    
+    error_log("Specialties found: " . count($rows));
     json_out(['ok'=>true,'items'=>$rows]);
+    
   } catch (Throwable $e) {
     error_log("Error en specialties: " . $e->getMessage());
     json_out(['ok'=>false,'error'=>'Error al cargar especialidades'], 500);
@@ -116,7 +131,11 @@ if ($action === 'doctors') {
       ORDER BY u.Apellido, u.Nombre
     ");
     $st->execute([$esp]);
-    json_out(['ok'=>true,'items'=>$st->fetchAll(PDO::FETCH_ASSOC)]);
+    $items = $st->fetchAll(PDO::FETCH_ASSOC);
+    
+    error_log("Doctors found for specialty $esp: " . count($items));
+    json_out(['ok'=>true,'items'=>$items]);
+    
   } catch (Throwable $e) {
     error_log("Error en doctors: " . $e->getMessage());
     json_out(['ok'=>false,'error'=>'Error al cargar médicos'], 500);
@@ -138,7 +157,10 @@ if ($action === 'medico_info') {
     $st->execute([$med]);
     $medico = $st->fetch(PDO::FETCH_ASSOC);
     
-    if(!$medico) json_out(['ok'=>false,'error'=>'Médico no encontrado'], 404);
+    if(!$medico) {
+      error_log("Medico not found: $med");
+      json_out(['ok'=>false,'error'=>'Médico no encontrado'], 404);
+    }
     
     // Obtener horarios
     $st2 = $pdo->prepare("
@@ -155,6 +177,8 @@ if ($action === 'medico_info') {
     // Días únicos
     $dias_unicos = array_unique(array_map(fn($h)=>$h['Dia_semana'], $horarios));
     
+    error_log("Medico $med info loaded with " . count($horarios) . " schedules");
+    
     json_out(['ok'=>true,'medico'=>[
       'id'=>(int)$medico['Id_medico'],
       'nombre'=>$medico['Nombre'].' '.$medico['Apellido'],
@@ -162,6 +186,7 @@ if ($action === 'medico_info') {
       'horarios'=>$horarios,
       'duracion_turno'=>(int)($medico['Duracion_Turno']??30)
     ]]);
+    
   } catch (Throwable $e) {
     error_log("Error en medico_info: " . $e->getMessage());
     json_out(['ok'=>false,'error'=>'Error al cargar información del médico'], 500);
@@ -175,9 +200,13 @@ if ($action === 'slots') {
     $date = $_GET['date'] ?? '';
 
     if ($med <= 0) json_out(['ok' => false, 'error' => 'Médico inválido'], 400);
-    if (!$date || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) json_out(['ok' => false, 'error' => 'Fecha inválida'], 400);
+    if (!$date || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+      json_out(['ok' => false, 'error' => 'Fecha inválida'], 400);
+    }
 
     $diaSemana = get_day_name($date);
+    
+    error_log("Loading slots for medico $med on $date ($diaSemana)");
     
     // Obtener horarios del médico para ese día
     $st = $pdo->prepare("
@@ -188,6 +217,8 @@ if ($action === 'slots') {
     ");
     $st->execute([$med, $diaSemana]);
     $horarios = $st->fetchAll(PDO::FETCH_ASSOC);
+    
+    error_log("Schedules found: " . count($horarios));
     
     if (empty($horarios)) {
       json_out(['ok' => true, 'slots' => []]);
@@ -202,6 +233,8 @@ if ($action === 'slots') {
     $st->execute([$date, $med]);
     $busy = array_map(fn($r) => substr($r['hhmm'], 0, 5), $st->fetchAll(PDO::FETCH_ASSOC));
 
+    error_log("Busy slots: " . count($busy));
+
     // Generar slots
     $slots = [];
     foreach($horarios as $bloque) {
@@ -215,7 +248,9 @@ if ($action === 'slots') {
       }
     }
 
+    error_log("Available slots: " . count($slots));
     json_out(['ok' => true, 'slots' => $slots]);
+    
   } catch (Throwable $e) {
     error_log("Error en slots: " . $e->getMessage());
     json_out(['ok'=>false,'error'=>'Error al cargar horarios'], 500);
@@ -231,13 +266,15 @@ if ($action === 'my_appointments') {
   $uid = require_login();
   
   try {
-    $st = $pdo->prepare("SELECT Id_paciente FROM paciente WHERE Id_usuario=? LIMIT 1");
+    $st = $pdo->prepare("SELECT Id_paciente FROM paciente WHERE Id_usuario=? AND Activo=1 LIMIT 1");
     $st->execute([$uid]); 
     $pacId = (int)($st->fetchColumn() ?: 0);
     
-    if ($pacId<=0) json_out(['ok'=>true,'items'=>[]]);
+    if ($pacId<=0) {
+      error_log("User $uid is not a patient");
+      json_out(['ok'=>true,'items'=>[]]);
+    }
     
-    // ✅ MODIFICADO: Agregar WHERE Estado != 'cancelado' y ORDER BY Fecha ASC (próximos primero)
     $st = $pdo->prepare("
       SELECT t.Id_turno, t.Fecha, t.Estado, t.Id_medico,
              um.Nombre AS MNombre, um.Apellido AS MApellido, 
@@ -265,7 +302,10 @@ if ($action === 'my_appointments') {
         'especialidad'=>$r['Especialidad'] ?? '',
       ];
     }
+    
+    error_log("User $uid has " . count($items) . " appointments");
     json_out(['ok'=>true,'items'=>$items]);
+    
   } catch (Throwable $e) {
     error_log("Error en my_appointments: " . $e->getMessage());
     json_out(['ok'=>false,'error'=>'Error al cargar turnos'], 500);
@@ -282,8 +322,12 @@ if ($action === 'book' && $_SERVER['REQUEST_METHOD']==='POST') {
     $time = trim($_POST['time'] ?? '');
     $med  = (int)($_POST['medico_id'] ?? 0);
     
-    if (!$date || !preg_match('/^\d{4}-\d{2}-\d{2}$/',$date)) json_out(['ok'=>false,'error'=>'Fecha inválida'], 400);
-    if (!$time || !preg_match('/^\d{2}:\d{2}$/',$time)) json_out(['ok'=>false,'error'=>'Hora inválida'], 400);
+    if (!$date || !preg_match('/^\d{4}-\d{2}-\d{2}$/',$date)) {
+      json_out(['ok'=>false,'error'=>'Fecha inválida'], 400);
+    }
+    if (!$time || !preg_match('/^\d{2}:\d{2}$/',$time)) {
+      json_out(['ok'=>false,'error'=>'Hora inválida'], 400);
+    }
     if ($med<=0) json_out(['ok'=>false,'error'=>'Médico inválido'], 400);
 
     // Verificar médico activo
@@ -292,7 +336,7 @@ if ($action === 'book' && $_SERVER['REQUEST_METHOD']==='POST') {
     if (!$chkM->fetch()) json_out(['ok'=>false,'error'=>'Médico no encontrado'], 404);
 
     // Obtener paciente
-    $st = $pdo->prepare("SELECT Id_paciente FROM paciente WHERE Id_usuario=? LIMIT 1");
+    $st = $pdo->prepare("SELECT Id_paciente FROM paciente WHERE Id_usuario=? AND Activo=1 LIMIT 1");
     $st->execute([$uid]); 
     $pacId = (int)($st->fetchColumn() ?: 0);
     if ($pacId<=0) json_out(['ok'=>false,'error'=>'Usuario no registrado como paciente'], 400);
@@ -312,7 +356,9 @@ if ($action === 'book' && $_SERVER['REQUEST_METHOD']==='POST') {
       LIMIT 1
     ");
     $chkHorario->execute([$med, $diaSemana, $time, $time]);
-    if (!$chkHorario->fetch()) json_out(['ok'=>false,'error'=>'Horario no disponible'], 400);
+    if (!$chkHorario->fetch()) {
+      json_out(['ok'=>false,'error'=>'Horario no disponible para este médico'], 400);
+    }
     
     // Verificar disponibilidad
     $chk = $pdo->prepare("
@@ -330,7 +376,9 @@ if ($action === 'book' && $_SERVER['REQUEST_METHOD']==='POST') {
     ");
     $ins->execute([$fechaHora, $pacId, $med]);
 
+    error_log("Turno created: User $uid, Medico $med, Date $fechaHora");
     json_out(['ok'=>true,'mensaje'=>'Turno reservado exitosamente']);
+    
   } catch (Throwable $e) {
     error_log("Error en book: " . $e->getMessage());
     json_out(['ok'=>false,'error'=>'Error al reservar turno'], 500);
@@ -357,7 +405,10 @@ if ($action === 'cancel' && $_SERVER['REQUEST_METHOD']==='POST') {
     if (!$st->fetch()) json_out(['ok'=>false,'error'=>'No autorizado'], 403);
     
     $pdo->prepare("UPDATE turno SET Estado='cancelado' WHERE Id_turno=?")->execute([$tid]);
+    
+    error_log("Turno $tid cancelled by user $uid");
     json_out(['ok'=>true,'mensaje'=>'Turno cancelado']);
+    
   } catch (Throwable $e) {
     error_log("Error en cancel: " . $e->getMessage());
     json_out(['ok'=>false,'error'=>'Error al cancelar turno'], 500);
@@ -376,8 +427,12 @@ if ($action === 'reschedule' && $_SERVER['REQUEST_METHOD']==='POST') {
     $med  = (int)($_POST['medico_id'] ?? 0);
     
     if ($tid<=0) json_out(['ok'=>false,'error'=>'Turno inválido'], 400);
-    if (!$date || !preg_match('/^\d{4}-\d{2}-\d{2}$/',$date)) json_out(['ok'=>false,'error'=>'Fecha inválida'], 400);
-    if (!$time || !preg_match('/^\d{2}:\d{2}$/',$time)) json_out(['ok'=>false,'error'=>'Hora inválida'], 400);
+    if (!$date || !preg_match('/^\d{4}-\d{2}-\d{2}$/',$date)) {
+      json_out(['ok'=>false,'error'=>'Fecha inválida'], 400);
+    }
+    if (!$time || !preg_match('/^\d{2}:\d{2}$/',$time)) {
+      json_out(['ok'=>false,'error'=>'Hora inválida'], 400);
+    }
     if ($med<=0) json_out(['ok'=>false,'error'=>'Médico inválido'], 400);
     
     $st = $pdo->prepare("
@@ -404,7 +459,9 @@ if ($action === 'reschedule' && $_SERVER['REQUEST_METHOD']==='POST') {
       LIMIT 1
     ");
     $chkHorario->execute([$med, $diaSemana, $time, $time]);
-    if (!$chkHorario->fetch()) json_out(['ok'=>false,'error'=>'Horario no disponible'], 400);
+    if (!$chkHorario->fetch()) {
+      json_out(['ok'=>false,'error'=>'Horario no disponible'], 400);
+    }
     
     $chk = $pdo->prepare("
       SELECT 1 FROM turno 
@@ -420,7 +477,9 @@ if ($action === 'reschedule' && $_SERVER['REQUEST_METHOD']==='POST') {
       WHERE Id_turno=?
     ")->execute([$fechaHora, $med, $tid]);
     
+    error_log("Turno $tid rescheduled by user $uid to $fechaHora");
     json_out(['ok'=>true,'mensaje'=>'Turno reprogramado exitosamente','fecha'=>$fechaHora]);
+    
   } catch (Throwable $e) {
     error_log("Error en reschedule: " . $e->getMessage());
     json_out(['ok'=>false,'error'=>'Error al reprogramar turno'], 500);
@@ -428,4 +487,5 @@ if ($action === 'reschedule' && $_SERVER['REQUEST_METHOD']==='POST') {
 }
 
 // Acción no soportada
-json_out(['ok'=>false,'error'=>'Acción no soportada'], 400);
+error_log("Unsupported action: $action");
+json_out(['ok'=>false,'error'=>'Acción no soportada: ' . $action], 400);

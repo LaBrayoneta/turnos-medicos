@@ -1,13 +1,28 @@
 <?php
+// views/pages/admin.php - VERSIÓN CORREGIDA
+// ✅ CRÍTICO: NO debe haber NADA antes de este <?php
+
+// ✅ Configuración de errores para debugging
+error_reporting(E_ALL);
+ini_set('display_errors', '0');
+ini_set('log_errors', '1');
+
 session_start();
 require_once __DIR__ . '/../../config/db.php';
 
 function dbx(){ return db(); }
 
-function json_out($d,$c=200){ 
+function json_out($d, $c=200){ 
+  // Limpiar cualquier output previo
+  if (ob_get_level()) {
+    ob_end_clean();
+  }
+  
   http_response_code($c); 
-  header('Content-Type: application/json; charset=utf-8'); 
-  echo json_encode($d, JSON_UNESCAPED_UNICODE); 
+  header('Content-Type: application/json; charset=utf-8');
+  header('X-Content-Type-Options: nosniff');
+  
+  echo json_encode($d, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); 
   exit; 
 }
 
@@ -25,21 +40,26 @@ function must_staff(PDO $pdo){
   
   $uid = (int)$_SESSION['Id_usuario'];
 
-  $st = $pdo->prepare("SELECT Id_secretaria FROM secretaria WHERE Id_usuario=? LIMIT 1");
-  $st->execute([$uid]); 
-  $secData = $st->fetch(PDO::FETCH_ASSOC);
-  $isSec = (bool)$secData;
+  try {
+    $st = $pdo->prepare("SELECT Id_secretaria FROM secretaria WHERE Id_usuario=? AND Activo=1 LIMIT 1");
+    $st->execute([$uid]); 
+    $secData = $st->fetch(PDO::FETCH_ASSOC);
+    $isSec = (bool)$secData;
 
-  $st = $pdo->prepare("SELECT Id_medico FROM medico WHERE Id_usuario=? LIMIT 1");
-  $st->execute([$uid]); 
-  $me = $st->fetch(PDO::FETCH_ASSOC);
-  $isMed = (bool)$me;
+    $st = $pdo->prepare("SELECT Id_medico FROM medico WHERE Id_usuario=? AND Activo=1 LIMIT 1");
+    $st->execute([$uid]); 
+    $me = $st->fetch(PDO::FETCH_ASSOC);
+    $isMed = (bool)$me;
 
-  if (!$isSec && !$isMed) {
+    if (!$isSec && !$isMed) {
+      return [false, false, false, null, null];
+    }
+    
+    return [$uid, $isSec, $isMed, $me ? (int)$me['Id_medico'] : null, $secData ? (int)$secData['Id_secretaria'] : null];
+  } catch (Throwable $e) {
+    error_log("Error in must_staff: " . $e->getMessage());
     return [false, false, false, null, null];
   }
-  
-  return [$uid, $isSec, $isMed, $me ? (int)$me['Id_medico'] : null, $secData ? (int)$secData['Id_secretaria'] : null];
 }
 
 function weekday_name_es($ymd){
@@ -48,62 +68,89 @@ function weekday_name_es($ymd){
   return $map[$w] ?? '';
 }
 
-// Generar CSRF token
+// ✅ Inicializar PDO con manejo de errores
+try {
+  $pdo = dbx();
+} catch (Throwable $e) {
+  error_log("Database connection error in admin.php: " . $e->getMessage());
+  
+  // Si es una petición AJAX, devolver JSON
+  if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') {
+    json_out(['ok'=>false,'error'=>'Error de conexión a base de datos'], 500);
+  }
+  
+  // Si es HTML, mostrar error
+  die("Error de conexión a base de datos. Verifica la configuración.");
+}
+
+// ✅ Generar CSRF token
 if (empty($_SESSION['csrf_token'])) {
   $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 }
 $csrf = $_SESSION['csrf_token'];
 
-$pdo = dbx();
+// ======= MANEJO DE PETICIONES API (ANTES DEL HTML) =======
+$isApiRequest = isset($_GET['fetch']) || isset($_POST['action']);
 
-// ======= API - ESTO DEBE IR ANTES DEL HTML =======
-if (isset($_GET['fetch']) || isset($_POST['action'])) {
+if ($isApiRequest) {
+  // ✅ Verificar autorización
   [$uid,$isSec,$isMed,$myMedId,$mySecId] = must_staff($pdo);
   
-  // Si no está autorizado, devolver error JSON
   if (!$uid) {
     json_out(['ok'=>false,'error'=>'No autorizado'], 403);
   }
 
-  // Init - Cargar todos los datos iniciales
-  if (($_GET['fetch'] ?? '') === 'init') {
+  $action = $_GET['fetch'] ?? $_POST['action'] ?? '';
+
+  // ========== FETCH: INIT ==========
+  if ($action === 'init') {
     try {
-      $esps = $pdo->query("SELECT Id_Especialidad, Nombre FROM especialidad WHERE Activo=1 ORDER BY Nombre")->fetchAll(PDO::FETCH_ASSOC);
+      // Especialidades
+      $esps = $pdo->query("
+        SELECT Id_Especialidad, Nombre 
+        FROM especialidad 
+        WHERE Activo=1 
+        ORDER BY Nombre
+      ")->fetchAll(PDO::FETCH_ASSOC);
       
+      // Médicos con horarios
       $meds = $pdo->query("
-        SELECT m.Id_medico, u.Apellido, u.Nombre, u.dni, u.email, e.Nombre AS Especialidad, m.Legajo, 
-               m.Id_Especialidad
+        SELECT m.Id_medico, u.Apellido, u.Nombre, u.dni, u.email, 
+               e.Nombre AS Especialidad, m.Legajo, m.Id_Especialidad
         FROM medico m
         JOIN usuario u ON u.Id_usuario=m.Id_usuario
         LEFT JOIN especialidad e ON e.Id_Especialidad=m.Id_Especialidad
         WHERE m.Activo=1
-        ORDER BY u.Apellido,u.Nombre
+        ORDER BY u.Apellido, u.Nombre
       ")->fetchAll(PDO::FETCH_ASSOC);
       
-      // Obtener horarios para cada médico
+      // Cargar horarios para cada médico
+      $stHorarios = $pdo->prepare("
+        SELECT Dia_semana, Hora_inicio, Hora_fin 
+        FROM horario_medico 
+        WHERE Id_medico=? 
+        ORDER BY FIELD(Dia_semana, 'lunes','martes','miercoles','jueves','viernes','sabado','domingo'), Hora_inicio
+      ");
+      
       foreach($meds as &$med) {
-        $st = $pdo->prepare("
-          SELECT Dia_semana, Hora_inicio, Hora_fin 
-          FROM horario_medico 
-          WHERE Id_medico=? 
-          ORDER BY FIELD(Dia_semana, 'lunes','martes','miercoles','jueves','viernes','sabado','domingo'), Hora_inicio
-        ");
-        $st->execute([$med['Id_medico']]);
-        $med['horarios'] = $st->fetchAll(PDO::FETCH_ASSOC);
+        $stHorarios->execute([$med['Id_medico']]);
+        $med['horarios'] = $stHorarios->fetchAll(PDO::FETCH_ASSOC);
         
-        // Construir string de días disponibles
         $dias = array_unique(array_map(fn($h)=>$h['Dia_semana'], $med['horarios']));
         $med['Dias_Disponibles'] = implode(',', $dias);
       }
+      unset($med); // Romper referencia
       
+      // Secretarias
       $secs = $pdo->query("
         SELECT s.Id_secretaria, u.Apellido, u.Nombre, u.dni, u.email, u.Id_usuario
         FROM secretaria s
         JOIN usuario u ON u.Id_usuario=s.Id_usuario
         WHERE s.Activo=1
-        ORDER BY u.Apellido,u.Nombre
+        ORDER BY u.Apellido, u.Nombre
       ")->fetchAll(PDO::FETCH_ASSOC);
       
+      // Obras sociales
       $obras = $pdo->query("
         SELECT Id_obra_social, Nombre, Activo 
         FROM obra_social 
@@ -118,15 +165,15 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
         'obras_sociales'=>$obras,
         'csrf'=>$csrf
       ]);
+      
     } catch (Throwable $e) {
-      error_log('Error en init: ' . $e->getMessage());
-      json_out(['ok'=>false,'error'=>'Error cargando datos: ' . $e->getMessage()], 500);
+      error_log('Error en fetch=init: ' . $e->getMessage() . "\n" . $e->getTraceAsString());
+      json_out(['ok'=>false,'error'=>'Error al cargar datos: ' . $e->getMessage()], 500);
     }
   }
 
   // ========== OBRAS SOCIALES ==========
-  
-  if (($_POST['action'] ?? '') === 'create_obra_social') {
+  if ($action === 'create_obra_social') {
     ensure_csrf();
     try {
       $nombre = trim($_POST['nombre'] ?? '');
@@ -145,7 +192,7 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
     }
   }
 
-  if (($_POST['action'] ?? '') === 'toggle_obra_social') {
+  if ($action === 'toggle_obra_social') {
     ensure_csrf();
     try {
       $id = (int)($_POST['id_obra_social'] ?? 0);
@@ -160,7 +207,7 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
     }
   }
 
-  if (($_POST['action'] ?? '') === 'delete_obra_social') {
+  if ($action === 'delete_obra_social') {
     ensure_csrf();
     try {
       $id = (int)($_POST['id_obra_social'] ?? 0);
@@ -182,8 +229,7 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
   }
 
   // ========== MÉDICOS ==========
-  
-  if (($_POST['action'] ?? '') === 'create_medico') {
+  if ($action === 'create_medico') {
     ensure_csrf();
     try {
       $nombre = trim($_POST['nombre'] ?? '');
@@ -230,7 +276,7 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
     }
   }
 
-  if (($_POST['action'] ?? '') === 'update_medico') {
+  if ($action === 'update_medico') {
     ensure_csrf();
     try {
       $idMed = (int)($_POST['id_medico'] ?? 0);
@@ -278,7 +324,7 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
     }
   }
 
-  if (($_POST['action'] ?? '') === 'delete_medico') {
+  if ($action === 'delete_medico') {
     ensure_csrf();
     try {
       $idMed = (int)($_POST['id_medico'] ?? 0);
@@ -294,8 +340,7 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
   }
 
   // ========== SECRETARIAS ==========
-  
-  if (($_POST['action'] ?? '') === 'create_secretaria') {
+  if ($action === 'create_secretaria') {
     ensure_csrf();
     try {
       $nombre = trim($_POST['nombre'] ?? '');
@@ -321,7 +366,7 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
     }
   }
 
-  if (($_POST['action'] ?? '') === 'update_secretaria') {
+  if ($action === 'update_secretaria') {
     ensure_csrf();
     try {
       $idSec = (int)($_POST['id_secretaria'] ?? 0);
@@ -345,7 +390,7 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
     }
   }
 
-  if (($_POST['action'] ?? '') === 'delete_secretaria') {
+  if ($action === 'delete_secretaria') {
     ensure_csrf();
     try {
       $idSec = (int)($_POST['id_secretaria'] ?? 0);
@@ -361,8 +406,7 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
   }
 
   // ========== TURNOS ==========
-  
-  if (($_GET['fetch'] ?? '') === 'doctors') {
+  if ($action === 'doctors') {
     $espId = (int)($_GET['especialidad_id'] ?? 0);
     if ($espId <= 0) json_out(['ok'=>false,'error'=>'Especialidad inválida'],400);
     
@@ -377,7 +421,7 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
     json_out(['ok'=>true,'items'=>$stmt->fetchAll(PDO::FETCH_ASSOC)]);
   }
 
-  if (($_GET['fetch'] ?? '') === 'agenda') {
+  if ($action === 'agenda') {
     $medId = (int)($_GET['medico_id'] ?? 0);
     if ($medId <= 0) json_out(['ok'=>false,'error'=>'Médico inválido'],400);
 
@@ -422,7 +466,7 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
     json_out(['ok'=>true,'items'=>$items]);
   }
 
-  if (($_GET['fetch'] ?? '') === 'slots') {
+  if ($action === 'slots') {
     $medId = (int)($_GET['medico_id'] ?? 0);
     $date = $_GET['date'] ?? '';
 
@@ -467,7 +511,7 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
     json_out(['ok'=>true,'slots'=>$slots]);
   }
 
-  if (($_GET['fetch'] ?? '') === 'search_pacientes') {
+  if ($action === 'search_pacientes') {
     $q = trim($_GET['q'] ?? '');
     if (strlen($q) < 2) json_out(['ok'=>true,'items'=>[]]);
 
@@ -490,7 +534,7 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
     json_out(['ok'=>true,'items'=>$stmt->fetchAll(PDO::FETCH_ASSOC)]);
   }
 
-  if (($_POST['action'] ?? '') === 'create_turno') {
+  if ($action === 'create_turno') {
     ensure_csrf();
     try {
       $medId = (int)($_POST['medico_id'] ?? 0);
@@ -525,7 +569,7 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
     }
   }
 
-  if (($_POST['action'] ?? '') === 'cancel_turno') {
+  if ($action === 'cancel_turno') {
     ensure_csrf();
     try {
       $turnoId = (int)($_POST['turno_id'] ?? 0);
@@ -540,7 +584,7 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
     }
   }
 
-  if (($_POST['action'] ?? '') === 'delete_turno') {
+  if ($action === 'delete_turno') {
     ensure_csrf();
     try {
       $turnoId = (int)($_POST['turno_id'] ?? 0);
@@ -555,7 +599,7 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
     }
   }
 
-  if (($_POST['action'] ?? '') === 'reschedule_turno') {
+  if ($action === 'reschedule_turno') {
     ensure_csrf();
     try {
       $turnoId = (int)($_POST['turno_id'] ?? 0);
@@ -591,13 +635,13 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
     }
   }
 
-  json_out(['ok'=>false,'error'=>'Acción no soportada'],400);
+  // Si llegamos aquí, la acción no fue reconocida
+  json_out(['ok'=>false,'error'=>'Acción no soportada: ' . $action],400);
 }
 
 // ======= VALIDACIÓN DE ACCESO PARA HTML =======
 [$uid,$isSec,$isMed,$myMedId,$mySecId] = must_staff($pdo);
 
-// Si no está logueado o no es staff, redirigir
 if (!$uid) {
   header('Location: login.php');
   exit;
@@ -615,6 +659,7 @@ $rolTexto = $isSec ? 'Secretaría' : 'Médico';
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="csrf-token" content="<?= htmlspecialchars($csrf) ?>">
   <link rel="stylesheet" href="../assets/css/admin.css">
+  <script src="../assets/js/turnos_utils.js"></script>
 </head>
 <body>
 <header class="hdr">
@@ -629,11 +674,11 @@ $rolTexto = $isSec ? 'Secretaría' : 'Médico';
 </header>
 
 <main class="wrap">
-  <div class="tabs">
-    <button class="tab active" data-tab="medicos">👨‍⚕️ Médicos</button>
-    <button class="tab" data-tab="secretarias">👩‍💼 Secretarias</button>
-    <button class="tab" data-tab="obras">🏥 Obras Sociales</button>
-    <button class="tab" data-tab="turnos">📅 Gestión de Turnos</button>
+  <div class="tabs" style="display:flex;gap:8px;margin-bottom:20px;border-bottom:2px solid var(--border);padding-bottom:10px">
+    <button class="tab active" data-tab="medicos" style="padding:10px 20px;background:var(--primary);color:#001219;border:none;border-radius:8px;font-weight:700;cursor:pointer">👨‍⚕️ Médicos</button>
+    <button class="tab" data-tab="secretarias" style="padding:10px 20px;background:transparent;color:var(--text);border:1px solid var(--border);border-radius:8px;font-weight:700;cursor:pointer">👩‍💼 Secretarias</button>
+    <button class="tab" data-tab="obras" style="padding:10px 20px;background:transparent;color:var(--text);border:1px solid var(--border);border-radius:8px;font-weight:700;cursor:pointer">🏥 Obras Sociales</button>
+    <button class="tab" data-tab="turnos" style="padding:10px 20px;background:transparent;color:var(--text);border:1px solid var(--border);border-radius:8px;font-weight:700;cursor:pointer">📅 Gestión de Turnos</button>
   </div>
 
   <!-- ===== MÉDICOS ===== -->
@@ -641,7 +686,7 @@ $rolTexto = $isSec ? 'Secretaría' : 'Médico';
     <h2>Gestión de Médicos</h2>
     
     <h3>➕ Crear Médico</h3>
-    <form id="createMedicoForm" class="grid grid-4">
+    <form id="createMedicoForm" class="grid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px">
       <div class="field"><label>Nombre *</label><input type="text" name="nombre" required></div>
       <div class="field"><label>Apellido *</label><input type="text" name="apellido" required></div>
       <div class="field"><label>DNI *</label><input type="text" name="dni" required></div>
@@ -652,8 +697,8 @@ $rolTexto = $isSec ? 'Secretaría' : 'Médico';
     </form>
 
     <h3 style="margin-top:20px">⏰ Horarios de Atención</h3>
-    <div class="card card-sub" style="background:#0f172a;padding:16px">
-      <div class="grid grid-4">
+    <div class="card" style="background:#0f172a;padding:16px;margin-top:10px">
+      <div class="grid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px">
         <div class="field">
           <label>Día</label>
           <select id="diaHorario">
@@ -668,14 +713,14 @@ $rolTexto = $isSec ? 'Secretaría' : 'Médico';
         </div>
         <div class="field"><label>Hora inicio</label><input type="time" id="horaInicio" value="08:00"></div>
         <div class="field"><label>Hora fin</label><input type="time" id="horaFin" value="12:00"></div>
-        <div class="actions-row">
-          <button type="button" id="btnAgregarHorario" class="btn ghost">➕ Agregar</button>
+        <div style="display:flex;align-items:flex-end">
+          <button type="button" id="btnAgregarHorario" class="btn ghost" style="width:100%">➕ Agregar</button>
         </div>
       </div>
       
-      <div id="horariosListCreate" class="horarios-list"></div>
+      <div id="horariosListCreate" style="margin-top:16px;min-height:40px"></div>
       
-      <div class="actions-row" style="margin-top:16px">
+      <div style="display:flex;align-items:center;gap:16px;margin-top:16px">
         <button type="button" id="btnCrearMedico" class="btn primary">✅ Crear Médico</button>
         <span id="msgCreateMed" class="msg"></span>
       </div>
@@ -683,7 +728,7 @@ $rolTexto = $isSec ? 'Secretaría' : 'Médico';
 
     <h3 style="margin-top:24px">📋 Lista de Médicos</h3>
     <div class="table-wrap">
-      <table class="mini">
+      <table>
         <thead><tr><th>Nombre</th><th>DNI</th><th>Especialidad</th><th>Legajo</th><th>Horarios</th><th>Acciones</th></tr></thead>
         <tbody id="tblMedicos"></tbody>
       </table>
@@ -695,21 +740,21 @@ $rolTexto = $isSec ? 'Secretaría' : 'Médico';
     <h2>Gestión de Secretarias</h2>
     
     <h3>➕ Crear Secretaria</h3>
-    <form id="createSecretariaForm" class="grid grid-3">
+    <form id="createSecretariaForm" class="grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px">
       <div class="field"><label>Nombre *</label><input type="text" name="nombre" required></div>
       <div class="field"><label>Apellido *</label><input type="text" name="apellido" required></div>
       <div class="field"><label>DNI *</label><input type="text" name="dni" required></div>
       <div class="field"><label>Email *</label><input type="email" name="email" required></div>
       <div class="field"><label>Contraseña *</label><input type="password" name="password" required></div>
-      <div class="actions-row">
-        <button class="btn" type="submit">✅ Crear</button>
+      <div style="display:flex;align-items:flex-end;gap:12px">
+        <button class="btn primary" type="submit">✅ Crear</button>
         <span id="msgCreateSec" class="msg"></span>
       </div>
     </form>
 
     <h3 style="margin-top:24px">📋 Lista de Secretarias</h3>
     <div class="table-wrap">
-      <table class="mini">
+      <table>
         <thead><tr><th>Nombre</th><th>DNI</th><th>Email</th><th>Acciones</th></tr></thead>
         <tbody id="tblSecretarias"></tbody>
       </table>
@@ -721,20 +766,20 @@ $rolTexto = $isSec ? 'Secretaría' : 'Médico';
     <h2>Gestión de Obras Sociales</h2>
     
     <h3>➕ Crear Obra Social</h3>
-    <form id="createObraForm" class="grid grid-2">
+    <form id="createObraForm" class="grid" style="display:grid;grid-template-columns:1fr auto;gap:16px;align-items:flex-end">
       <div class="field">
         <label>Nombre *</label>
         <input type="text" name="nombre" required placeholder="Ej: OSPROTURA">
       </div>
-      <div class="actions-row">
-        <button class="btn" type="submit">✅ Crear</button>
+      <div style="display:flex;align-items:center;gap:12px">
+        <button class="btn primary" type="submit">✅ Crear</button>
         <span id="msgCreateObra" class="msg"></span>
       </div>
     </form>
 
     <h3 style="margin-top:24px">📋 Lista de Obras Sociales</h3>
     <div class="table-wrap">
-      <table class="mini">
+      <table>
         <thead>
           <tr>
             <th>Nombre</th>
@@ -751,20 +796,20 @@ $rolTexto = $isSec ? 'Secretaría' : 'Médico';
   <section id="tab-turnos" class="card hidden">
     <h2>📅 Gestión de Turnos</h2>
     
-    <div class="grid grid-3" style="margin-bottom:16px">
+    <div class="grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:16px">
       <div class="field"><label for="fEsp">Especialidad</label><select id="fEsp"><option value="">Cargando…</option></select></div>
       <div class="field"><label for="fMed">Médico</label><select id="fMed" disabled><option value="">Elegí especialidad…</option></select></div>
-      <div class="actions-row">
-        <button id="btnNewTurno" class="btn" disabled>➕ Crear Turno</button>
+      <div style="display:flex;align-items:flex-end">
+        <button id="btnNewTurno" class="btn primary" disabled style="width:100%">➕ Crear Turno</button>
       </div>
     </div>
 
-    <div class="grid grid-2" style="margin-bottom:12px">
+    <div class="grid" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:12px">
       <div class="field"><label for="fFrom">Desde</label><input id="fFrom" type="date"></div>
       <div class="field"><label for="fTo">Hasta</label><input id="fTo" type="date"></div>
     </div>
 
-    <div class="actions-row" style="margin-bottom:16px">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
       <button id="btnRefresh" class="btn ghost">🔄 Actualizar</button>
       <button id="btnClearDates" class="btn ghost">❌ Quitar filtro</button>
       <span id="msgTurns" class="msg"></span>
@@ -776,16 +821,15 @@ $rolTexto = $isSec ? 'Secretaría' : 'Médico';
         <thead><tr><th>Fecha</th><th>Paciente</th><th>Estado</th><th>Acciones</th></tr></thead>
         <tbody></tbody>
       </table>
-      <div id="noData" class="msg" style="padding:10px;display:none">Seleccioná un médico para ver sus turnos</div>
+      <div id="noData" class="msg" style="padding:20px;text-align:center;display:none">Seleccioná un médico para ver sus turnos</div>
     </div>
 
-    <!-- Reprogramar turno -->
     <div id="reprogSection" class="card" style="margin-top:16px;display:none;background:#0f172a">
       <h3>🔄 Reprogramar Turno</h3>
-      <div class="grid grid-3">
+      <div class="grid" style="display:grid;grid-template-columns:1fr 1fr auto;gap:16px">
         <div class="field"><label for="newDate">Nueva fecha</label><input id="newDate" type="date"></div>
         <div class="field"><label for="newTime">Nuevo horario</label><select id="newTime"><option value="">Elegí fecha…</option></select></div>
-        <div class="actions-row">
+        <div style="display:flex;align-items:flex-end;gap:8px">
           <button id="btnReprog" class="btn primary" disabled>✅ Confirmar</button>
           <button id="btnCancelReprog" class="btn ghost">❌ Cancelar</button>
         </div>
@@ -795,8 +839,8 @@ $rolTexto = $isSec ? 'Secretaría' : 'Médico';
 </main>
 
 <!-- Modal Crear Turno -->
-<div id="modalCreateTurno" class="modal" style="display:none">
-  <div class="modal-content">
+<div id="modalCreateTurno" class="modal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:1000;align-items:center;justify-content:center">
+  <div class="modal-content" style="background:#111827;border:1px solid #1f2937;border-radius:16px;padding:32px;max-width:600px;width:90%">
     <h2>➕ Crear Nuevo Turno</h2>
     <form id="formCreateTurno">
       <input type="hidden" id="turnoMedicoId">
@@ -812,11 +856,11 @@ $rolTexto = $isSec ? 'Secretaría' : 'Médico';
           Ninguno
         </div>
       </div>
-      <div class="grid grid-2">
+      <div class="grid" style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
         <div class="field"><label>Fecha</label><input type="date" id="turnoDate" required></div>
         <div class="field"><label>Horario</label><select id="turnoTime" required><option value="">Elegí fecha primero...</option></select></div>
       </div>
-      <div class="actions-row" style="margin-top:12px">
+      <div style="display:flex;align-items:center;gap:12px;margin-top:16px">
         <button type="submit" class="btn primary">✅ Crear Turno</button>
         <button type="button" id="btnCloseModal" class="btn ghost">❌ Cancelar</button>
         <span id="msgModal" class="msg"></span>
@@ -826,12 +870,12 @@ $rolTexto = $isSec ? 'Secretaría' : 'Médico';
 </div>
 
 <!-- Modal Editar Médico -->
-<div id="modalEditMedico" class="modal" style="display:none">
-  <div class="modal-content">
+<div id="modalEditMedico" class="modal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:1000;align-items:center;justify-content:center">
+  <div class="modal-content" style="background:#111827;border:1px solid #1f2937;border-radius:16px;padding:32px;max-width:700px;width:90%;max-height:90vh;overflow-y:auto">
     <h2>✏️ Editar Médico</h2>
     <form id="formEditMedico">
       <input type="hidden" id="editMedId">
-      <div class="grid grid-3">
+      <div class="grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
         <div class="field"><label>Nombre</label><input type="text" id="editMedNombre" required></div>
         <div class="field"><label>Apellido</label><input type="text" id="editMedApellido" required></div>
         <div class="field"><label>Email</label><input type="email" id="editMedEmail" required></div>
@@ -840,8 +884,8 @@ $rolTexto = $isSec ? 'Secretaría' : 'Médico';
       </div>
 
       <h3 style="margin-top:20px">⏰ Horarios de Atención</h3>
-      <div class="card card-sub" style="background:#0f172a;padding:16px">
-        <div class="grid grid-4">
+      <div class="card" style="background:#0f172a;padding:16px;margin-top:10px">
+        <div class="grid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px">
           <div class="field">
             <label>Día</label>
             <select id="editDiaHorario">
@@ -856,15 +900,15 @@ $rolTexto = $isSec ? 'Secretaría' : 'Médico';
           </div>
           <div class="field"><label>Hora inicio</label><input type="time" id="editHoraInicio" value="08:00"></div>
           <div class="field"><label>Hora fin</label><input type="time" id="editHoraFin" value="12:00"></div>
-          <div class="actions-row">
-            <button type="button" id="btnAgregarHorarioEdit" class="btn ghost">➕ Agregar</button>
+          <div style="display:flex;align-items:flex-end">
+            <button type="button" id="btnAgregarHorarioEdit" class="btn ghost" style="width:100%">➕ Agregar</button>
           </div>
         </div>
         
-        <div id="horariosListEdit" class="horarios-list"></div>
+        <div id="horariosListEdit" style="margin-top:16px;min-height:40px"></div>
       </div>
 
-      <div class="actions-row" style="margin-top:12px">
+      <div style="display:flex;align-items:center;gap:12px;margin-top:16px">
         <button type="submit" class="btn primary">💾 Guardar</button>
         <button type="button" id="btnCloseMedicoModal" class="btn ghost">❌ Cancelar</button>
         <span id="msgMedicoModal" class="msg"></span>
@@ -874,17 +918,17 @@ $rolTexto = $isSec ? 'Secretaría' : 'Médico';
 </div>
 
 <!-- Modal Editar Secretaria -->
-<div id="modalEditSecretaria" class="modal" style="display:none">
-  <div class="modal-content">
+<div id="modalEditSecretaria" class="modal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:1000;align-items:center;justify-content:center">
+  <div class="modal-content" style="background:#111827;border:1px solid #1f2937;border-radius:16px;padding:32px;max-width:600px;width:90%">
     <h2>✏️ Editar Secretaria</h2>
     <form id="formEditSecretaria">
       <input type="hidden" id="editSecId">
-      <div class="grid grid-3">
+      <div class="grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
         <div class="field"><label>Nombre</label><input type="text" id="editSecNombre" required></div>
         <div class="field"><label>Apellido</label><input type="text" id="editSecApellido" required></div>
         <div class="field"><label>Email</label><input type="email" id="editSecEmail" required></div>
       </div>
-      <div class="actions-row" style="margin-top:12px">
+      <div style="display:flex;align-items:center;gap:12px;margin-top:16px">
         <button type="submit" class="btn primary">💾 Guardar</button>
         <button type="button" id="btnCloseSecretariaModal" class="btn ghost">❌ Cancelar</button>
         <span id="msgSecretariaModal" class="msg"></span>
@@ -893,14 +937,72 @@ $rolTexto = $isSec ? 'Secretaría' : 'Médico';
   </div>
 </div>
 
+<style>
+.horario-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px;
+  background: #1a2332;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 8px;
+}
+.horario-info {
+  flex: 1;
+}
+.btn-remove-horario {
+  padding: 6px 12px;
+  background: #ef4444;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+.btn-remove-horario:hover {
+  background: #dc2626;
+}
+.paciente-item {
+  padding: 10px;
+  background: #0b1220;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.paciente-item:hover {
+  background: #1a2332;
+  border-color: var(--primary);
+}
+.paciente-item.selected {
+  background: var(--primary);
+  color: #001219;
+  border-color: var(--primary);
+}
+.tab {
+  transition: all 0.3s;
+}
+.tab:hover {
+  background: rgba(34,211,238,0.1);
+  border-color: var(--primary);
+}
+.tab.active {
+  background: var(--primary);
+  color: #001219;
+  border-color: var(--primary);
+}
+</style>
+
 <script src="../assets/js/admin.js"></script>
 <script>
-// Sistema de gestión de horarios múltiples
+// Sistema de gestión de horarios
 (function(){
   const horariosCreate = [];
   const horariosEdit = [];
   
-  // Función para convertir hora 24h a 12h con AM/PM
   function formatHour12(time24) {
     if (!time24) return '';
     const [hours, minutes] = time24.split(':');
@@ -910,25 +1012,14 @@ $rolTexto = $isSec ? 'Secretaría' : 'Médico';
     return `${h}:${minutes} ${ampm}`;
   }
   
-  // Función para verificar si un horario ya existe
   function horarioExists(list, dia, inicio, fin) {
-    return list.some(h => 
-      h.dia === dia && 
-      h.inicio === inicio && 
-      h.fin === fin
-    );
+    return list.some(h => h.dia === dia && h.inicio === inicio && h.fin === fin);
   }
   
-  // Función para verificar si hay solapamiento de horarios
   function horarioOverlaps(list, dia, inicioNuevo, finNuevo) {
     return list.some(h => {
       if (h.dia !== dia) return false;
-      
-      const inicioExistente = h.inicio;
-      const finExistente = h.fin;
-      
-      // Verificar solapamiento
-      return (inicioNuevo < finExistente && finNuevo > inicioExistente);
+      return (inicioNuevo < h.fin && finNuevo > h.inicio);
     });
   }
   
@@ -942,7 +1033,6 @@ $rolTexto = $isSec ? 'Secretaría' : 'Médico';
       return;
     }
     
-    // Ordenar horarios por día y hora
     const diasOrden = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'];
     const sortedList = [...list].sort((a, b) => {
       const diaCompare = diasOrden.indexOf(a.dia) - diasOrden.indexOf(b.dia);
@@ -950,11 +1040,10 @@ $rolTexto = $isSec ? 'Secretaría' : 'Médico';
       return a.inicio.localeCompare(b.inicio);
     });
     
-    sortedList.forEach((h, idx) => {
+    sortedList.forEach((h) => {
       const realIdx = list.indexOf(h);
       const div = document.createElement('div');
       div.className = 'horario-item';
-      div.style.animation = 'fadeIn 0.3s ease-out';
       
       const horaInicio = formatHour12(h.inicio.substring(0,5));
       const horaFin = formatHour12(h.fin.substring(0,5));
@@ -965,12 +1054,11 @@ $rolTexto = $isSec ? 'Secretaría' : 'Médico';
           <br>
           <span style="color:var(--text);font-size:13px">🕒 ${horaInicio} - ${horaFin}</span>
         </div>
-        <button type="button" class="btn-remove-horario" data-idx="${realIdx}" title="Eliminar horario">🗑️ Eliminar</button>
+        <button type="button" class="btn-remove-horario" data-idx="${realIdx}">🗑️ Eliminar</button>
       `;
       container.appendChild(div);
     });
     
-    // Eventos de eliminar
     container.querySelectorAll('.btn-remove-horario').forEach(btn => {
       btn.addEventListener('click', () => {
         const idx = parseInt(btn.dataset.idx);
@@ -995,7 +1083,6 @@ $rolTexto = $isSec ? 'Secretaría' : 'Médico';
     });
   }
   
-  // Agregar horario - Crear
   document.getElementById('btnAgregarHorario')?.addEventListener('click', () => {
     const dia = document.getElementById('diaHorario').value;
     const inicio = document.getElementById('horaInicio').value;
@@ -1003,19 +1090,11 @@ $rolTexto = $isSec ? 'Secretaría' : 'Médico';
     const msgEl = document.getElementById('msgCreateMed');
     
     if (!inicio || !fin) {
-      if (msgEl) {
-        msgEl.textContent = '⚠️ Completá las horas de inicio y fin';
-        msgEl.className = 'msg err';
-      }
       alert('⚠️ Completá las horas de inicio y fin');
       return;
     }
     
     if (inicio >= fin) {
-      if (msgEl) {
-        msgEl.textContent = '⚠️ La hora de inicio debe ser menor que la de fin';
-        msgEl.className = 'msg err';
-      }
       alert('⚠️ La hora de inicio debe ser menor que la de fin');
       return;
     }
@@ -1023,43 +1102,25 @@ $rolTexto = $isSec ? 'Secretaría' : 'Médico';
     const inicioFull = inicio + ':00';
     const finFull = fin + ':00';
     
-    // Verificar si ya existe el mismo horario
     if (horarioExists(horariosCreate, dia, inicioFull, finFull)) {
-      if (msgEl) {
-        msgEl.textContent = '⚠️ Este horario ya fue agregado';
-        msgEl.className = 'msg err';
-      }
-      alert('⚠️ Este horario ya fue agregado para este día');
+      alert('⚠️ Este horario ya fue agregado');
       return;
     }
     
-    // Verificar solapamiento
     if (horarioOverlaps(horariosCreate, dia, inicioFull, finFull)) {
-      if (msgEl) {
-        msgEl.textContent = '⚠️ Este horario se solapa con uno existente';
-        msgEl.className = 'msg err';
-      }
-      alert('⚠️ Este horario se solapa con otro horario existente para este día');
+      alert('⚠️ Este horario se solapa con uno existente');
       return;
     }
     
     horariosCreate.push({dia, inicio: inicioFull, fin: finFull});
     renderHorarios(horariosCreate, 'horariosListCreate');
     
-    const horaInicio = formatHour12(inicio);
-    const horaFin = formatHour12(fin);
-    
     if (msgEl) {
-      msgEl.textContent = `✅ Horario agregado: ${dia.charAt(0).toUpperCase() + dia.slice(1)} ${horaInicio} - ${horaFin}`;
+      msgEl.textContent = `✅ Horario agregado`;
       msgEl.className = 'msg ok';
     }
-    
-    // Limpiar campos
-    document.getElementById('horaInicio').value = '08:00';
-    document.getElementById('horaFin').value = '12:00';
   });
   
-  // Agregar horario - Editar
   document.getElementById('btnAgregarHorarioEdit')?.addEventListener('click', () => {
     const dia = document.getElementById('editDiaHorario').value;
     const inicio = document.getElementById('editHoraInicio').value;
@@ -1067,19 +1128,11 @@ $rolTexto = $isSec ? 'Secretaría' : 'Médico';
     const msgEl = document.getElementById('msgMedicoModal');
     
     if (!inicio || !fin) {
-      if (msgEl) {
-        msgEl.textContent = '⚠️ Completá las horas de inicio y fin';
-        msgEl.className = 'msg err';
-      }
       alert('⚠️ Completá las horas de inicio y fin');
       return;
     }
     
     if (inicio >= fin) {
-      if (msgEl) {
-        msgEl.textContent = '⚠️ La hora de inicio debe ser menor que la de fin';
-        msgEl.className = 'msg err';
-      }
       alert('⚠️ La hora de inicio debe ser menor que la de fin');
       return;
     }
@@ -1087,48 +1140,28 @@ $rolTexto = $isSec ? 'Secretaría' : 'Médico';
     const inicioFull = inicio + ':00';
     const finFull = fin + ':00';
     
-    // Verificar si ya existe el mismo horario
     if (horarioExists(horariosEdit, dia, inicioFull, finFull)) {
-      if (msgEl) {
-        msgEl.textContent = '⚠️ Este horario ya fue agregado';
-        msgEl.className = 'msg err';
-      }
-      alert('⚠️ Este horario ya fue agregado para este día');
+      alert('⚠️ Este horario ya fue agregado');
       return;
     }
     
-    // Verificar solapamiento
     if (horarioOverlaps(horariosEdit, dia, inicioFull, finFull)) {
-      if (msgEl) {
-        msgEl.textContent = '⚠️ Este horario se solapa con uno existente';
-        msgEl.className = 'msg err';
-      }
-      alert('⚠️ Este horario se solapa con otro horario existente para este día');
+      alert('⚠️ Este horario se solapa con uno existente');
       return;
     }
     
     horariosEdit.push({dia, inicio: inicioFull, fin: finFull});
     renderHorarios(horariosEdit, 'horariosListEdit');
     
-    const horaInicio = formatHour12(inicio);
-    const horaFin = formatHour12(fin);
-    
     if (msgEl) {
-      msgEl.textContent = `✅ Horario agregado: ${dia.charAt(0).toUpperCase() + dia.slice(1)} ${horaInicio} - ${horaFin}`;
+      msgEl.textContent = `✅ Horario agregado`;
       msgEl.className = 'msg ok';
     }
-    
-    // Limpiar campos
-    document.getElementById('editHoraInicio').value = '08:00';
-    document.getElementById('editHoraFin').value = '12:00';
   });
   
-  // Crear médico con horarios
   document.getElementById('btnCrearMedico')?.addEventListener('click', async () => {
     const form = document.getElementById('createMedicoForm');
     const msgEl = document.getElementById('msgCreateMed');
-    
-    if (!form || !msgEl) return;
     
     if (!form.checkValidity()) {
       form.reportValidity();
@@ -1136,9 +1169,9 @@ $rolTexto = $isSec ? 'Secretaría' : 'Médico';
     }
     
     if (horariosCreate.length === 0) {
-      msgEl.textContent = '⚠️ Debe agregar al menos un horario de atención';
+      msgEl.textContent = '⚠️ Debe agregar al menos un horario';
       msgEl.className = 'msg err';
-      alert('⚠️ Debe agregar al menos un horario de atención para el médico');
+      alert('⚠️ Debe agregar al menos un horario de atención');
       return;
     }
     
@@ -1151,11 +1184,11 @@ $rolTexto = $isSec ? 'Secretaría' : 'Médico';
     fd.set('horarios', JSON.stringify(horariosCreate));
     
     try {
-      const res = await fetch('admin.php', {method:'POST', body:fd, headers:{'Accept':'application/json'}});
+      const res = await fetch('admin.php', {method:'POST', body:fd});
       const data = await res.json();
-      if (!data.ok) throw new Error(data.error || 'Error creando médico');
+      if (!data.ok) throw new Error(data.error || 'Error');
       
-      msgEl.textContent = '✅ ' + (data.msg || 'Médico creado exitosamente');
+      msgEl.textContent = '✅ ' + (data.msg || 'Médico creado');
       msgEl.className = 'msg ok';
       
       form.reset();
@@ -1169,7 +1202,6 @@ $rolTexto = $isSec ? 'Secretaría' : 'Médico';
     }
   });
   
-  // Al abrir modal de edición, cargar horarios
   window.loadMedicoHorarios = function(horarios) {
     horariosEdit.length = 0;
     if (horarios && Array.isArray(horarios)) {
@@ -1184,21 +1216,18 @@ $rolTexto = $isSec ? 'Secretaría' : 'Médico';
     renderHorarios(horariosEdit, 'horariosListEdit');
   };
   
-  // Submit editar médico
   document.getElementById('formEditMedico')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const msgEl = document.getElementById('msgMedicoModal');
     
-    if (!msgEl) return;
-    
     if (horariosEdit.length === 0) {
-      msgEl.textContent = '⚠️ Debe tener al menos un horario de atención';
+      msgEl.textContent = '⚠️ Debe tener al menos un horario';
       msgEl.className = 'msg err';
       alert('⚠️ Debe tener al menos un horario de atención');
       return;
     }
     
-    msgEl.textContent = '⏳ Actualizando médico...';
+    msgEl.textContent = '⏳ Actualizando...';
     msgEl.className = 'msg';
     
     const fd = new FormData();
@@ -1213,11 +1242,11 @@ $rolTexto = $isSec ? 'Secretaría' : 'Médico';
     fd.append('horarios', JSON.stringify(horariosEdit));
     
     try {
-      const res = await fetch('admin.php', {method:'POST', body:fd, headers:{'Accept':'application/json'}});
+      const res = await fetch('admin.php', {method:'POST', body:fd});
       const data = await res.json();
-      if (!data.ok) throw new Error(data.error || 'Error actualizando');
+      if (!data.ok) throw new Error(data.error || 'Error');
       
-      msgEl.textContent = '✅ ' + (data.msg || 'Médico actualizado exitosamente');
+      msgEl.textContent = '✅ ' + (data.msg || 'Actualizado');
       msgEl.className = 'msg ok';
       
       setTimeout(() => window.location.reload(), 1500);
@@ -1227,10 +1256,11 @@ $rolTexto = $isSec ? 'Secretaría' : 'Médico';
     }
   });
   
-  // Inicializar
   renderHorarios(horariosCreate, 'horariosListCreate');
   renderHorarios(horariosEdit, 'horariosListEdit');
 })();
+
+console.log('✅ Admin panel inicializado correctamente');
 </script>
 </body>
 </html>
