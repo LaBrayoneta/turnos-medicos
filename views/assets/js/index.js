@@ -1,17 +1,27 @@
-// index.js - Sistema de Turnos para Pacientes (CORREGIDO)
+// index.js - Sistema de Turnos para Pacientes (VERSIÓN CORREGIDA Y OPTIMIZADA)
 (function(){
+  'use strict';
+  
+  // ========== ELEMENTOS DOM ==========
   const $ = s => document.querySelector(s);
   const msg = $('#msg');
   const slotsBox = $('#slots');
   const btnReservar = $('#btnReservar');
   const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
   const calTitle = $('#calTitle');
-  const calGrid  = $('#calGrid');
-  const calPrev  = $('#calPrev');
-  const calNext  = $('#calNext');
-  const selEsp   = $('#selEsp');
-  const selMedico= $('#selMedico');
-  const tblBody  = $('#tblTurnos tbody');
+  const calGrid = $('#calGrid');
+  const calPrev = $('#calPrev');
+  const calNext = $('#calNext');
+  const selEsp = $('#selEsp');
+  const selMedico = $('#selMedico');
+  const tblBody = $('#tblTurnos tbody');
+
+  // Validar que existan los elementos críticos
+  if (!msg || !slotsBox || !btnReservar || !calGrid || !selEsp || !selMedico || !tblBody) {
+    console.error('❌ Faltan elementos DOM críticos');
+    alert('Error: La página no se cargó correctamente. Recarga la página.');
+    return;
+  }
 
   const API_BASE = window.API_BASE_URL || '../../controllers/turnos_api.php';
   const Utils = window.TurnosUtils;
@@ -19,21 +29,23 @@
   console.log('🚀 Inicializando sistema de turnos');
   console.log('📡 API Base URL:', API_BASE);
 
-  const MONTHS = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  // ========== CONSTANTES ==========
+  const MONTHS = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  const DAYS_SHORT = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 
-  // Estado
+  // ========== ESTADO GLOBAL ==========
   let current = new Date();
-  current.setHours(0,0,0,0);
-  current.setDate(1);
+  current.setHours(0, 0, 0, 0);
+  current.setDate(1); // Primer día del mes
   
   let minMonth = new Date();
   minMonth.setDate(1);
-  minMonth.setHours(0,0,0,0);
+  minMonth.setHours(0, 0, 0, 0);
   
   let maxMonth = new Date();
   maxMonth.setMonth(maxMonth.getMonth() + 3);
   maxMonth.setDate(1);
-  maxMonth.setHours(0,0,0,0);
+  maxMonth.setHours(0, 0, 0, 0);
 
   let selectedDate = null;
   let selectedSlot = null;
@@ -41,11 +53,12 @@
   let currentMedicoData = null;
   let especialidadesData = [];
 
-  function setMsg(t, ok=true){
-    if(!msg) return;
+  // ========== UTILIDADES ==========
+  function setMsg(t, ok = true) {
+    if (!msg) return;
     msg.textContent = t || '';
-    msg.classList.remove('ok','err');
-    msg.classList.add(ok?'ok':'err');
+    msg.classList.remove('ok', 'err');
+    msg.classList.add(ok ? 'ok' : 'err');
   }
 
   function showError(message) {
@@ -53,17 +66,60 @@
     setMsg(message, false);
   }
 
-  function escapeHtml(s){
-    return String(s??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  function escapeHtml(s) {
+    return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  // ========== FUNCIONES DE FECHA ==========
+  function toYMD(date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  function getToday() {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return today;
+  }
+
+  function getDayName(dateStr) {
+    const dias = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];
+    const date = new Date(dateStr + 'T00:00:00');
+    return dias[date.getDay()];
+  }
+
+  function formatDateDisplay(dateStr) {
+    const date = new Date(dateStr + 'T00:00:00');
+    const options = { 
+      weekday: 'long', 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric' 
+    };
+    return date.toLocaleDateString('es-AR', options);
+  }
+
+  function formatHour12(time24) {
+    if (!time24) return '';
+    const [hours, minutes] = time24.split(':');
+    let h = parseInt(hours);
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    h = h % 12 || 12;
+    return `${h}:${minutes} ${ampm}`;
+  }
+
+  function canCancelTurno(fechaTurno, horaTurno) {
+    const now = new Date();
+    const turnoDateTime = new Date(`${fechaTurno}T${horaTurno}:00`);
+    const hoursUntil = (turnoDateTime - now) / (1000 * 60 * 60);
+    return hoursUntil >= 24;
   }
 
   // ========== ESPECIALIDADES ==========
-  async function loadEspecialidades(){
+  async function loadEspecialidades() {
     console.log('🔄 Cargando especialidades...');
-    if (!selEsp) {
-      console.error('❌ Elemento selEsp no encontrado');
-      return;
-    }
     
     selEsp.innerHTML = `<option value="">Cargando…</option>`;
     selEsp.disabled = true;
@@ -85,7 +141,7 @@
       const data = await res.json();
       console.log('📦 Data recibida:', data);
       
-      if(!data.ok) {
+      if (!data.ok) {
         throw new Error(data.error || 'Error al cargar especialidades');
       }
       
@@ -100,10 +156,10 @@
       
       selEsp.innerHTML = `<option value="">Elegí especialidad…</option>`;
       
-      especialidadesData.forEach(e=>{
-        const opt=document.createElement('option');
-        opt.value=e.Id_Especialidad;
-        opt.textContent=e.Nombre;
+      especialidadesData.forEach(e => {
+        const opt = document.createElement('option');
+        opt.value = e.Id_Especialidad;
+        opt.textContent = e.Nombre;
         selEsp.appendChild(opt);
       });
       
@@ -112,14 +168,13 @@
     } catch (error) {
       console.error('❌ Error cargando especialidades:', error);
       showError('Error al cargar especialidades: ' + error.message);
-      selEsp.innerHTML = `<option value="">Error - Refresca la página</option>`;
+      selEsp.innerHTML = `<option value="">Error - Recarga la página</option>`;
     }
   }
 
   // ========== MÉDICOS ==========
-  async function loadMedicosByEsp(espId){
+  async function loadMedicosByEsp(espId) {
     console.log('🔄 Cargando médicos para especialidad:', espId);
-    if (!selMedico) return;
     
     selMedico.innerHTML = `<option value="">Cargando…</option>`;
     selMedico.disabled = true;
@@ -139,7 +194,7 @@
       const data = await res.json();
       console.log('📦 Médicos recibidos:', data);
       
-      if(!data.ok) {
+      if (!data.ok) {
         throw new Error(data.error || 'Error al cargar médicos');
       }
       
@@ -153,10 +208,10 @@
       
       selMedico.innerHTML = `<option value="">Elegí médico…</option>`;
       
-      medicos.forEach(m=>{
-        const opt=document.createElement('option');
-        opt.value=m.Id_medico;
-        opt.textContent=`${m.Apellido}, ${m.Nombre}`;
+      medicos.forEach(m => {
+        const opt = document.createElement('option');
+        opt.value = m.Id_medico;
+        opt.textContent = `${m.Apellido}, ${m.Nombre}`;
         selMedico.appendChild(opt);
       });
       
@@ -171,10 +226,10 @@
   }
 
   // ========== INFO MÉDICO ==========
-  async function loadMedicoInfo(medicoId){
+  async function loadMedicoInfo(medicoId) {
     console.log('🔄 Cargando info del médico:', medicoId);
     
-    try{
+    try {
       const url = `${API_BASE}?action=medico_info&medico_id=${medicoId}`;
       console.log('📡 Fetching:', url);
       
@@ -189,7 +244,7 @@
       const data = await res.json();
       console.log('📦 Info médico:', data);
       
-      if(!data.ok) {
+      if (!data.ok) {
         throw new Error(data.error || 'Error al cargar información del médico');
       }
       
@@ -199,11 +254,11 @@
       // Resetear al mes actual
       current = new Date();
       current.setDate(1);
-      current.setHours(0,0,0,0);
+      current.setHours(0, 0, 0, 0);
       
       renderCalendar();
       
-    }catch(e){
+    } catch (e) {
       console.error('❌ Error cargando médico:', e);
       showError('Error al cargar información del médico: ' + e.message);
       currentMedicoData = null;
@@ -212,93 +267,100 @@
   }
 
   // ========== CALENDARIO ==========
-  function renderCalendar(){
-    if (!calTitle || !calGrid) {
-      console.error('❌ Elementos del calendario no encontrados');
-      return;
-    }
-    
-    console.log('🗓️ Renderizando calendario');
+  function renderCalendar() {
+    console.log('🗓️ Renderizando calendario para:', current);
     
     calTitle.textContent = `${MONTHS[current.getMonth()]} ${current.getFullYear()}`;
     selectedDate = null;
     selectedSlot = null;
-    if (btnReservar) btnReservar.disabled = true;
+    btnReservar.disabled = true;
     
     const calHint = $('#calHint');
-    if(!currentMedicoData){
-      if (slotsBox) slotsBox.textContent='Elegí un médico primero…';
-      if(calHint) calHint.textContent = '💡 Seleccioná un médico para ver disponibilidad';
+    if (!currentMedicoData) {
+      slotsBox.innerHTML = '<div style="padding:20px;text-align:center;color:var(--muted)">Elegí un médico primero…</div>';
+      if (calHint) calHint.textContent = '💡 Seleccioná un médico para ver disponibilidad';
     } else {
-      if (slotsBox) slotsBox.textContent='Elegí un día disponible…';
+      slotsBox.innerHTML = '<div style="padding:20px;text-align:center;color:var(--muted)">Elegí un día disponible…</div>';
       const horarios = currentMedicoData.horarios || [];
       if (horarios.length === 0) {
-        if(calHint) calHint.textContent = '⚠️ Este médico no tiene horarios configurados';
+        if (calHint) calHint.textContent = '⚠️ Este médico no tiene horarios configurados';
       } else {
         const dias = [...new Set(horarios.map(h => h.Dia_semana))];
         const diasTexto = dias.map(d => d.charAt(0).toUpperCase() + d.slice(1)).join(', ');
-        if(calHint) calHint.textContent = `📅 Días disponibles: ${diasTexto}`;
+        if (calHint) calHint.textContent = `📅 Días disponibles: ${diasTexto}`;
       }
     }
 
     // Botones de navegación
-    if (calPrev) calPrev.disabled = (current <= minMonth);
-    if (calNext) calNext.disabled = (current >= maxMonth);
+    calPrev.disabled = (current <= minMonth);
+    calNext.disabled = (current >= maxMonth);
 
-    calGrid.innerHTML='';
+    calGrid.innerHTML = '';
+    
     const year = current.getFullYear();
     const month = current.getMonth();
-    const first = new Date(year, month, 1);
-    const last  = new Date(year, month+1, 0);
     
-    // Offset para lunes
-    let offset = (first.getDay() + 6) % 7;
+    // Primer y último día del mes
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
     
-    // Días del mes anterior
-    const prevMonth = new Date(year, month, 0);
-    const prevDays = prevMonth.getDate();
-    for(let i = offset - 1; i >= 0; i--){ 
-      const b = document.createElement('div');
-      b.className = 'day muted';
-      b.textContent = prevDays - i;
-      calGrid.appendChild(b);
+    console.log('📅 Mes:', month + 1, 'Año:', year);
+    console.log('📅 Primer día:', firstDay, 'Último día:', lastDay);
+    
+    // Offset para lunes (0 = lunes, 6 = domingo)
+    let offset = (firstDay.getDay() + 6) % 7;
+    console.log('📅 Offset:', offset);
+    
+    // Días del mes anterior (grises)
+    if (offset > 0) {
+      const prevMonth = new Date(year, month, 0);
+      const prevDays = prevMonth.getDate();
+      
+      for (let i = offset - 1; i >= 0; i--) {
+        const day = prevDays - i;
+        const cell = document.createElement('div');
+        cell.className = 'day muted';
+        cell.textContent = day;
+        calGrid.appendChild(cell);
+      }
     }
     
-    const today = Utils.getToday();
-    const maxDate = Utils.getMaxDate();
+    const today = getToday();
+    const maxDate = new Date();
+    maxDate.setMonth(maxDate.getMonth() + 3);
+    maxDate.setHours(23, 59, 59, 999);
     
     // Días del mes actual
-    for(let d = 1; d <= last.getDate(); d++){
+    for (let d = 1; d <= lastDay.getDate(); d++) {
       const cell = document.createElement('div');
       cell.className = 'day';
       cell.textContent = d;
       
       const dateObj = new Date(year, month, d);
-      dateObj.setHours(0,0,0,0);
+      dateObj.setHours(0, 0, 0, 0);
       
       const isPast = dateObj < today;
       const isTooFar = dateObj > maxDate;
       const isDayAvailable = currentMedicoData && isDayInSchedule(dateObj);
-      const available = !isPast && !isTooFar && isDayAvailable;
       
-      if(isPast) {
+      if (isPast) {
         cell.classList.add('muted');
         cell.title = 'Fecha pasada';
-      } else if(isTooFar) {
+      } else if (isTooFar) {
         cell.classList.add('muted');
         cell.title = 'Fecha muy lejana (máximo 3 meses)';
-      } else if(!currentMedicoData) {
+      } else if (!currentMedicoData) {
         cell.title = 'Seleccioná un médico primero';
-      } else if(!isDayAvailable) {
+      } else if (!isDayAvailable) {
         cell.title = 'Médico no atiende este día';
       } else {
         cell.classList.add('available');
         cell.title = 'Día disponible - Click para ver horarios';
-        cell.addEventListener('click', ()=> selectDay(dateObj, cell));
+        cell.addEventListener('click', () => selectDay(dateObj, cell));
       }
       
       // Marcar hoy
-      if (Utils.toYMD(dateObj) === Utils.toYMD(today)) {
+      if (toYMD(dateObj) === toYMD(today)) {
         cell.style.fontWeight = 'bold';
         cell.style.border = '2px solid var(--primary)';
       }
@@ -306,16 +368,16 @@
       calGrid.appendChild(cell);
     }
     
-    // Días del mes siguiente
-    const totalCells = offset + last.getDate();
+    // Días del mes siguiente (grises)
+    const totalCells = offset + lastDay.getDate();
     const remainingCells = totalCells % 7;
     if (remainingCells > 0) {
       const nextDays = 7 - remainingCells;
-      for(let i = 1; i <= nextDays; i++) {
-        const b = document.createElement('div');
-        b.className = 'day muted';
-        b.textContent = i;
-        calGrid.appendChild(b);
+      for (let i = 1; i <= nextDays; i++) {
+        const cell = document.createElement('div');
+        cell.className = 'day muted';
+        cell.textContent = i;
+        calGrid.appendChild(cell);
       }
     }
     
@@ -324,34 +386,28 @@
 
   function isDayInSchedule(dateObj) {
     if (!currentMedicoData || !currentMedicoData.horarios) return false;
-    const dayName = Utils.getDayName(Utils.toYMD(dateObj));
+    const dayName = getDayName(toYMD(dateObj));
     return currentMedicoData.horarios.some(h => h.Dia_semana === dayName);
   }
 
-  function highlightSelection(cell){
-    document.querySelectorAll('.day.selected').forEach(el=>el.classList.remove('selected'));
+  function highlightSelection(cell) {
+    document.querySelectorAll('.day.selected').forEach(el => el.classList.remove('selected'));
     if (cell) cell.classList.add('selected');
   }
 
-  async function selectDay(dateObj, cell){
-    const dateStr = Utils.toYMD(dateObj);
-    
-    const validation = Utils.isValidTurnoDate(dateStr);
-    if (!validation.valid) {
-      alert('⚠️ ' + validation.error);
-      return;
-    }
+  async function selectDay(dateObj, cell) {
+    const dateStr = toYMD(dateObj);
     
     selectedDate = dateStr;
     selectedSlot = null;
-    if (btnReservar) btnReservar.disabled = true;
+    btnReservar.disabled = true;
     highlightSelection(cell);
     
-    console.log('📅 Día seleccionado:', Utils.formatDateDisplay(selectedDate));
-    setMsg(`📅 Fecha: ${Utils.formatDateDisplay(selectedDate)}`);
+    console.log('📅 Día seleccionado:', formatDateDisplay(selectedDate));
+    setMsg(`📅 Fecha: ${formatDateDisplay(selectedDate)}`);
     
-    if(!selMedico || !selMedico.value){
-      if (slotsBox) slotsBox.textContent='Error: sin médico seleccionado';
+    if (!selMedico.value) {
+      slotsBox.innerHTML = '<div style="padding:20px;color:var(--err);text-align:center">❌ Error: sin médico seleccionado</div>';
       return;
     }
     
@@ -359,15 +415,14 @@
   }
 
   // ========== SLOTS ==========
-  async function fetchSlots(dateStr, medicoId){
+  async function fetchSlots(dateStr, medicoId) {
     console.log('🔄 Cargando horarios para:', dateStr);
-    if (!slotsBox) return;
     
     slotsBox.innerHTML = '<div style="padding:20px;text-align:center;color:var(--muted)">⏳ Cargando horarios...</div>';
-    if (btnReservar) btnReservar.disabled = true;
+    btnReservar.disabled = true;
     selectedSlot = null;
     
-    try{
+    try {
       const url = `${API_BASE}?action=slots&date=${dateStr}&medico_id=${medicoId}`;
       console.log('📡 Fetching:', url);
       
@@ -382,27 +437,25 @@
       const data = await res.json();
       console.log('📦 Slots recibidos:', data);
       
-      if(!data.ok) {
+      if (!data.ok) {
         throw new Error(data.error || 'Error al cargar horarios');
       }
       
       renderSlots(data.slots || []);
       
-    }catch(e){
+    } catch (e) {
       console.error('❌ Error cargando horarios:', e);
       showError('Error al cargar horarios: ' + e.message);
       slotsBox.innerHTML = '<div style="padding:20px;color:var(--err);text-align:center">❌ Error al cargar horarios</div>';
     }
   }
 
-  function renderSlots(list){
-    if (!slotsBox) return;
-    
+  function renderSlots(list) {
     slotsBox.innerHTML = '';
     
-    if(!Array.isArray(list) || list.length === 0){
+    if (!Array.isArray(list) || list.length === 0) {
       slotsBox.innerHTML = '<div style="padding:20px;color:var(--muted);text-align:center">⚠️ No hay horarios disponibles para esta fecha</div>';
-      if (btnReservar) btnReservar.disabled = true;
+      btnReservar.disabled = true;
       selectedSlot = null;
       console.log('⚠️ Sin slots');
       return;
@@ -432,20 +485,18 @@
       const container = document.createElement('div');
       container.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px';
       
-      slots.forEach(hhmm=>{
+      slots.forEach(hhmm => {
         const b = document.createElement('button');
-        b.type='button';
-        b.className='slot';
-        b.textContent = Utils.formatHour12(hhmm);
+        b.type = 'button';
+        b.className = 'slot';
+        b.textContent = formatHour12(hhmm);
         b.dataset.time = hhmm;
-        b.addEventListener('click', ()=>{
+        b.addEventListener('click', () => {
           selectedSlot = hhmm;
-          document.querySelectorAll('.slot').forEach(x=>x.classList.remove('sel'));
+          document.querySelectorAll('.slot').forEach(x => x.classList.remove('sel'));
           b.classList.add('sel');
-          if (btnReservar && selMedico && selMedico.value) {
-            btnReservar.disabled = false;
-          }
-          setMsg(`🕐 Horario: ${Utils.formatHour12(hhmm)}`);
+          btnReservar.disabled = false;
+          setMsg(`🕐 Horario: ${formatHour12(hhmm)}`);
           console.log('🕐 Slot seleccionado:', hhmm);
         });
         container.appendChild(b);
@@ -461,9 +512,8 @@
   }
 
   // ========== MIS TURNOS ==========
-  async function loadMyAppointments(){
+  async function loadMyAppointments() {
     console.log('🔄 Cargando mis turnos...');
-    if (!tblBody) return;
     
     tblBody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px"><div style="color:var(--muted)">⏳ Cargando...</div></td></tr>';
     
@@ -482,7 +532,7 @@
       const data = await res.json();
       console.log('📦 Turnos recibidos:', data);
       
-      if(!data.ok) {
+      if (!data.ok) {
         throw new Error(data.error || 'Error al cargar turnos');
       }
       
@@ -500,9 +550,8 @@
     }
   }
 
-  function renderAppointments(rows){
-    if (!tblBody) return;
-    tblBody.innerHTML='';
+  function renderAppointments(rows) {
+    tblBody.innerHTML = '';
     
     if (rows.length === 0) {
       const tr = document.createElement('tr');
@@ -521,18 +570,18 @@
       return;
     }
     
-    rows.forEach(r=>{
-      const tr=document.createElement('tr');
+    rows.forEach(r => {
+      const tr = document.createElement('tr');
       
       const [fecha, hora] = r.fecha.split(' ');
-      const canCancel = Utils.canCancelTurno(fecha, hora);
+      const canCancel = canCancelTurno(fecha, hora);
       
       const acciones = (r.estado === 'reservado')
         ? `
           <button class="btn ghost btn-cancel" data-id="${r.Id_turno}" ${!canCancel ? 'disabled title="Debe cancelar con 24hs de anticipación"' : ''}>
             ${canCancel ? '❌ Cancelar' : '🔒 Cancelar'}
           </button>
-          <button class="btn ghost btn-reprog" data-id="${r.Id_turno}" data-med="${r.Id_medico||''}">
+          <button class="btn ghost btn-reprog" data-id="${r.Id_turno}" data-med="${r.Id_medico || ''}">
             🔄 Reprogramar
           </button>
         `
@@ -540,41 +589,41 @@
       
       tr.innerHTML = `
         <td>
-          <div style="font-weight:600">${escapeHtml(r.fecha_fmt||'')}</div>
-          <div style="font-size:12px;color:var(--muted)">${Utils.formatDateDisplay(fecha)}</div>
+          <div style="font-weight:600">${escapeHtml(r.fecha_fmt || '')}</div>
+          <div style="font-size:12px;color:var(--muted)">${formatDateDisplay(fecha)}</div>
         </td>
-        <td>${escapeHtml(r.medico||'')}</td>
-        <td>${escapeHtml(r.especialidad||'')}</td>
-        <td><span class="badge ${r.estado==='reservado'?'ok':'warn'}">${escapeHtml(r.estado||'')}</span></td>
+        <td>${escapeHtml(r.medico || '')}</td>
+        <td>${escapeHtml(r.especialidad || '')}</td>
+        <td><span class="badge ${r.estado === 'reservado' ? 'ok' : 'warn'}">${escapeHtml(r.estado || '')}</span></td>
         <td class="row-actions">${acciones}</td>
       `;
       tblBody.appendChild(tr);
     });
 
-    tblBody.querySelectorAll('.btn-cancel').forEach(b=>{
-      b.addEventListener('click', ()=> onCancel(b.dataset.id));
+    tblBody.querySelectorAll('.btn-cancel').forEach(b => {
+      b.addEventListener('click', () => onCancel(b.dataset.id));
     });
     
-    tblBody.querySelectorAll('.btn-reprog').forEach(b=>{
-      b.addEventListener('click', async ()=> {
+    tblBody.querySelectorAll('.btn-reprog').forEach(b => {
+      b.addEventListener('click', async () => {
         selectedApptId = b.dataset.id;
         const medId = b.dataset.med || '';
         
         console.log('🔄 Modo reprogramación activado');
-        if (btnReservar) btnReservar.textContent = '✅ Confirmar Reprogramación';
+        btnReservar.textContent = '✅ Confirmar Reprogramación';
         setMsg('✏️ Seleccioná nueva fecha y horario');
         
         // Cargar médico
         if (medId && selMedico) {
-          for(let esp of especialidadesData) {
+          for (let esp of especialidadesData) {
             try {
               const resMeds = await fetch(`${API_BASE}?action=doctors&especialidad_id=${esp.Id_Especialidad}`, {
-                headers:{'Accept':'application/json'}
+                headers: {'Accept': 'application/json'}
               });
               const dataMeds = await resMeds.json();
-              if(dataMeds.ok) {
+              if (dataMeds.ok) {
                 const found = dataMeds.items.find(m => m.Id_medico == medId);
-                if(found) {
+                if (found) {
                   selEsp.value = esp.Id_Especialidad;
                   await loadMedicosByEsp(esp.Id_Especialidad);
                   selMedico.value = medId;
@@ -588,68 +637,61 @@
           }
         }
         
-        document.querySelector('.card')?.scrollIntoView({behavior:'smooth', block:'start'});
+        document.querySelector('.card')?.scrollIntoView({behavior: 'smooth', block: 'start'});
       });
     });
   }
 
-  async function onCancel(turnoId){
-    if(!confirm('⚠️ ¿Estás seguro de cancelar este turno?\n\nEsta acción no se puede deshacer.')) return;
+  async function onCancel(turnoId) {
+    if (!confirm('⚠️ ¿Estás seguro de cancelar este turno?\n\nEsta acción no se puede deshacer.')) return;
     
     console.log('🔄 Cancelando turno:', turnoId);
     setMsg('⏳ Cancelando turno...', true);
     
-    try{
+    try {
       const fd = new FormData();
-      fd.append('action','cancel');
+      fd.append('action', 'cancel');
       fd.append('turno_id', turnoId);
       fd.append('csrf_token', csrf);
       
       const res = await fetch(API_BASE, {
-        method:'POST',
-        body:fd,
-        headers:{'Accept':'application/json', 'X-CSRF-Token':csrf}
+        method: 'POST',
+        body: fd,
+        headers: {'Accept': 'application/json', 'X-CSRF-Token': csrf}
       });
       
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      if(!data.ok) throw new Error(data.error||'Error');
+      if (!data.ok) throw new Error(data.error || 'Error');
       
       setMsg('✅ Turno cancelado exitosamente', true);
       selectedApptId = null;
-      if (btnReservar) btnReservar.textContent = 'Reservar';
+      btnReservar.textContent = 'Reservar';
       
       await loadMyAppointments();
-      if (selectedDate && selMedico && selMedico.value) {
+      if (selectedDate && selMedico.value) {
         await fetchSlots(selectedDate, selMedico.value);
       }
       
-    }catch(e){
+    } catch (e) {
       console.error('❌ Error:', e);
       showError('Error al cancelar: ' + e.message);
     }
   }
 
   // ========== RESERVAR/REPROGRAMAR ==========
-  btnReservar?.addEventListener('click', async ()=>{
+  btnReservar?.addEventListener('click', async () => {
     setMsg('');
     
-    if(!selMedico || !selMedico.value){
+    if (!selMedico.value) {
       showError('Elegí un médico');
       alert('⚠️ Debés elegir una especialidad y un médico primero');
       return;
     }
     
-    if(!selectedDate || !selectedSlot){
+    if (!selectedDate || !selectedSlot) {
       showError('Elegí fecha y horario');
       alert('⚠️ Debés elegir una fecha y un horario disponible');
-      return;
-    }
-
-    const validation = Utils.isValidTurnoDate(selectedDate);
-    if (!validation.valid) {
-      showError(validation.error);
-      alert('⚠️ ' + validation.error);
       return;
     }
 
@@ -657,7 +699,12 @@
     
     const medicoNombre = selMedico.options[selMedico.selectedIndex].text;
     const espNombre = selEsp.options[selEsp.selectedIndex].text;
-    const summary = Utils.generateTurnoSummary(selectedDate, selectedSlot, medicoNombre, espNombre);
+    const summary = `
+      📅 ${formatDateDisplay(selectedDate)}
+      🕐 ${formatHour12(selectedSlot)}
+      👨‍⚕️ ${medicoNombre}
+      🏥 ${espNombre}
+    `.trim();
     
     if (!confirm(`${isReschedule ? '🔄 Confirmar Reprogramación' : '✅ Confirmar Reserva'}\n\n${summary}\n\n¿Continuar?`)) {
       return;
@@ -667,29 +714,29 @@
     setMsg(`⏳ ${isReschedule ? 'Reprogramando' : 'Reservando'} turno...`, true);
     btnReservar.disabled = true;
 
-    try{
-      const fd=new FormData();
+    try {
+      const fd = new FormData();
       fd.append('date', selectedDate);
       fd.append('time', selectedSlot);
       fd.append('medico_id', selMedico.value);
       fd.append('csrf_token', csrf);
 
       if (isReschedule) {
-        fd.append('action','reschedule');
+        fd.append('action', 'reschedule');
         fd.append('turno_id', selectedApptId);
       } else {
-        fd.append('action','book');
+        fd.append('action', 'book');
       }
 
       const res = await fetch(API_BASE, {
-        method:'POST',
-        body:fd,
-        headers:{'Accept':'application/json', 'X-CSRF-Token':csrf}
+        method: 'POST',
+        body: fd,
+        headers: {'Accept': 'application/json', 'X-CSRF-Token': csrf}
       });
       
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      if(!data.ok) throw new Error(data.error|| 'Error');
+      if (!data.ok) throw new Error(data.error || 'Error');
 
       const successMsg = isReschedule ? '✅ Turno reprogramado exitosamente' : '✅ Turno reservado exitosamente';
       setMsg(successMsg, true);
@@ -709,7 +756,7 @@
       
       document.querySelectorAll('.slot.sel').forEach(s => s.classList.remove('sel'));
       
-    }catch(e){
+    } catch (e) {
       console.error('❌ Error:', e);
       const errorMsg = '❌ Error al ' + (isReschedule ? 'reprogramar' : 'reservar') + ': ' + e.message;
       showError(errorMsg);
@@ -719,20 +766,18 @@
   });
 
   // ========== EVENTOS ==========
-  selEsp?.addEventListener('change', async ()=>{
+  selEsp?.addEventListener('change', async () => {
     console.log('🔄 Especialidad:', selEsp.value);
     setMsg('');
     selectedDate = null;
     selectedSlot = null;
-    if (btnReservar) btnReservar.disabled = true;
+    btnReservar.disabled = true;
     currentMedicoData = null;
-    if (slotsBox) slotsBox.innerHTML = '<div style="padding:20px;color:var(--muted);text-align:center">Elegí un médico…</div>';
+    slotsBox.innerHTML = '<div style="padding:20px;color:var(--muted);text-align:center">Elegí un médico…</div>';
     
-    if(!selEsp.value){
-      if (selMedico) {
-        selMedico.innerHTML=`<option value="">Elegí especialidad…</option>`;
-        selMedico.disabled = true;
-      }
+    if (!selEsp.value) {
+      selMedico.innerHTML = `<option value="">Elegí especialidad…</option>`;
+      selMedico.disabled = true;
       renderCalendar();
       return;
     }
@@ -741,41 +786,41 @@
     renderCalendar();
   });
 
-  selMedico?.addEventListener('change', async ()=>{
+  selMedico?.addEventListener('change', async () => {
     console.log('🔄 Médico:', selMedico.value);
     setMsg('');
     selectedSlot = null;
-    if (btnReservar) btnReservar.disabled = true;
+    btnReservar.disabled = true;
     selectedDate = null;
     
-    if(!selMedico.value){
+    if (!selMedico.value) {
       currentMedicoData = null;
-      if (slotsBox) slotsBox.innerHTML = '<div style="padding:20px;color:var(--muted);text-align:center">Elegí un médico…</div>';
+      slotsBox.innerHTML = '<div style="padding:20px;color:var(--muted);text-align:center">Elegí un médico…</div>';
       renderCalendar();
       return;
     }
     
     await loadMedicoInfo(selMedico.value);
-    if (slotsBox) slotsBox.innerHTML = '<div style="padding:20px;color:var(--muted);text-align:center">Elegí un día disponible en el calendario…</div>';
+    slotsBox.innerHTML = '<div style="padding:20px;color:var(--muted);text-align:center">Elegí un día disponible en el calendario…</div>';
   });
 
   // Navegación calendario
-  calPrev?.addEventListener('click', ()=>{
+  calPrev?.addEventListener('click', () => {
     if (current <= minMonth) return;
     console.log('⬅️ Mes anterior');
     current.setMonth(current.getMonth() - 1);
     renderCalendar();
   });
   
-  calNext?.addEventListener('click', ()=>{
+  calNext?.addEventListener('click', () => {
     if (current >= maxMonth) return;
     console.log('➡️ Mes siguiente');
     current.setMonth(current.getMonth() + 1);
     renderCalendar();
   });
 
-  // ========== INICIAL ==========
-  (async function init(){
+  // ========== INICIALIZACIÓN ==========
+  (async function init() {
     console.log('🚀 Inicializando aplicación de turnos');
     console.log('🔧 Verificando elementos DOM...');
     
@@ -812,7 +857,7 @@
       await loadEspecialidades();
       await loadMyAppointments();
       renderCalendar();
-      if (btnReservar) btnReservar.textContent = 'Reservar';
+      btnReservar.textContent = 'Reservar';
       console.log('✅ Aplicación inicializada correctamente');
     } catch (error) {
       console.error('❌ Error al inicializar:', error);
