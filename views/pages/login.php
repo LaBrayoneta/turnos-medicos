@@ -1,8 +1,8 @@
 <?php
 /**
- * login.php - Inicio de sesión con validaciones mejoradas
+ * login.php - VERSIÓN CORREGIDA
+ * Sincronizado con register.php
  */
-// Configuración de seguridad (ANTES de session_start)
 ini_set('session.cookie_httponly', 1);
 ini_set('session.cookie_secure', 1);
 ini_set('session.use_only_cookies', 1);
@@ -19,11 +19,10 @@ if (!empty($_SESSION['Id_usuario'])) {
     exit;
 }
 
-// Límite de intentos de login
+// Límite de intentos
 $max_attempts = 5;
-$lockout_time = 900; // 15 minutos en segundos
+$lockout_time = 900; // 15 minutos
 
-// Función para registrar intento fallido
 function recordFailedAttempt($ip) {
     if (!isset($_SESSION['login_attempts'])) {
         $_SESSION['login_attempts'] = [];
@@ -34,7 +33,6 @@ function recordFailedAttempt($ip) {
     ];
 }
 
-// Función para verificar si está bloqueado
 function isLockedOut($ip, $max_attempts, $lockout_time) {
     if (!isset($_SESSION['login_attempts'][$ip])) {
         return false;
@@ -42,7 +40,6 @@ function isLockedOut($ip, $max_attempts, $lockout_time) {
     
     $attempts = $_SESSION['login_attempts'][$ip];
     
-    // Resetear si pasó el tiempo de bloqueo
     if (time() - $attempts['time'] > $lockout_time) {
         unset($_SESSION['login_attempts'][$ip]);
         return false;
@@ -51,7 +48,6 @@ function isLockedOut($ip, $max_attempts, $lockout_time) {
     return $attempts['count'] >= $max_attempts;
 }
 
-// Función para limpiar y validar entrada
 function sanitizeInput($data) {
     $data = trim($data);
     $data = stripslashes($data);
@@ -59,63 +55,36 @@ function sanitizeInput($data) {
     return $data;
 }
 
-// Función para validar DNI argentino
-function validateArgentineDNI($dni) {
-    // Solo números
+// ✅ CORRECCIÓN 1: Validación de DNI más permisiva (solo para login)
+function validateDNI($dni) {
+    // Solo verificar que sea numérico y tenga longitud correcta
     if (!ctype_digit($dni)) {
         return 'El DNI debe contener solo números';
     }
     
-    // Longitud correcta
     $len = strlen($dni);
     if ($len < 7 || $len > 10) {
         return 'El DNI debe tener entre 7 y 10 dígitos';
     }
     
-    // No todos los dígitos iguales
-    if (preg_match('/^(\d)\1+$/', $dni)) {
-        return 'DNI inválido';
-    }
-    
-    // Rango válido
-    $dniNum = intval($dni);
-    if ($dniNum < 1000000 || $dniNum > 99999999) {
-        return 'DNI fuera de rango válido';
-    }
-    
-    return null;
-}
-
-// Función para detectar patrones de inyección
-function detectInjectionPatterns($input) {
-    $patterns = [
-        '/(\bOR\b|\bAND\b|\bUNION\b|\bSELECT\b|\bDROP\b|\bINSERT\b|\bDELETE\b|\bUPDATE\b)/i',
-        '/--|\/\*|\*\//',
-        '/<script|javascript:|onerror=|onload=/i',
-        '/[\'";]/'
-    ];
-    
-    foreach ($patterns as $pattern) {
-        if (preg_match($pattern, $input)) {
-            return true;
-        }
-    }
-    
-    return false;
+    return null; // ✅ Validación más simple para login
 }
 
 // Procesar login
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
     
-    // Verificar bloqueo por intentos
+    // Verificar bloqueo
     if (isLockedOut($ip, $max_attempts, $lockout_time)) {
         $error = 'Has excedido el límite de intentos. Intenta nuevamente en 15 minutos.';
-        http_response_code(429); // Too Many Requests
-        sleep(2); // Delay adicional
+        http_response_code(429);
+        sleep(2);
     } else {
         $dni = sanitizeInput($_POST['dni'] ?? '');
-        $password = $_POST['password'] ?? '';
+        $password = $_POST['password'] ?? ''; // ✅ NO sanitizar la contraseña
+        
+        // Log para debugging
+        error_log("Login attempt - DNI: $dni");
 
         // Validaciones básicas
         if (empty($dni)) {
@@ -124,87 +93,106 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error = 'La contraseña es obligatoria';
         } else {
             // Validar DNI
-            $dniError = validateArgentineDNI($dni);
+            $dniError = validateDNI($dni);
             if ($dniError) {
                 $error = $dniError;
                 recordFailedAttempt($ip);
             } else {
-                // Detectar patrones de inyección
-                if (detectInjectionPatterns($dni) || detectInjectionPatterns($password)) {
-                    $error = 'Entrada inválida detectada';
+                // ✅ CORRECCIÓN 2: Validaciones más simples para login
+                if (strlen($password) < 6 || strlen($password) > 128) {
+                    $error = 'Contraseña inválida';
                     recordFailedAttempt($ip);
-                    error_log("Possible injection attempt from IP: $ip");
-                    sleep(3); // Delay para ralentizar ataques
                 } else {
-                    // Validar longitud de contraseña
-                    if (strlen($password) < 6 || strlen($password) > 128) {
-                        $error = 'Contraseña inválida';
-                        recordFailedAttempt($ip);
-                    } else {
-                        try {
-                            // Buscar usuario por DNI
-                            $stmt = $pdo->prepare("
-                                SELECT Id_usuario, Nombre, Apellido, dni, email, Rol, Contraseña 
-                                FROM usuario 
-                                WHERE dni = ? 
-                                LIMIT 1
-                            ");
-                            $stmt->execute([$dni]);
-                            $user = $stmt->fetch(PDO::FETCH_ASSOC);
+                    try {
+                        // ✅ CORRECCIÓN 3: Query más específica
+                        $stmt = $pdo->prepare("
+                            SELECT 
+                                Id_usuario, 
+                                Nombre, 
+                                Apellido, 
+                                dni, 
+                                email, 
+                                Rol, 
+                                Contraseña 
+                            FROM usuario 
+                            WHERE dni = ? 
+                            LIMIT 1
+                        ");
+                        $stmt->execute([$dni]);
+                        $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
-                            if ($user && password_verify($password, $user['Contraseña'])) {
-                                // Login exitoso
-                                
-                                // Limpiar intentos fallidos
-                                unset($_SESSION['login_attempts'][$ip]);
-                                
-                                // Regenerar ID de sesión
-                                session_regenerate_id(true);
-                                
-                                // Guardar datos en sesión
-                                $_SESSION['Id_usuario'] = (int)$user['Id_usuario'];
-                                $_SESSION['dni'] = $user['dni'];
-                                $_SESSION['email'] = $user['email'];
-                                $_SESSION['Nombre'] = $user['Nombre'];
-                                $_SESSION['Apellido'] = $user['Apellido'];
-                                $_SESSION['Rol'] = $user['Rol'];
-                                $_SESSION['login_time'] = time();
-                                $_SESSION['ip_address'] = $ip;
-                                $_SESSION['user_agent'] = $_SERVER['HTTP_USER_AGENT'] ?? '';
-
-                                // Actualizar último acceso
-                                $updateStmt = $pdo->prepare("
-                                    UPDATE usuario 
-                                    SET ultimo_acceso = NOW() 
-                                    WHERE Id_usuario = ?
-                                ");
-                                $updateStmt->execute([$user['Id_usuario']]);
-
-                                // Registrar login exitoso
-                                error_log("Successful login: User {$user['Id_usuario']} from IP $ip");
-
-                                // Redirigir según el rol
-                                if ($user['Rol'] === 'medico' || $user['Rol'] === 'secretaria') {
-                                    header('Location: admin.php');
-                                } else {
-                                    header('Location: index.php');
-                                }
-                                exit;
-                            } else {
-                                $error = 'DNI o contraseña incorrectos';
-                                recordFailedAttempt($ip);
-                                
-                                // Registrar intento fallido
-                                error_log("Failed login attempt for DNI: $dni from IP: $ip");
-                                
-                                // Delay para prevenir ataques de fuerza bruta
-                                sleep(rand(1, 3));
-                            }
-                        } catch (Throwable $e) {
-                            error_log('Login error: ' . $e->getMessage());
-                            $error = 'Error al procesar el inicio de sesión. Intenta nuevamente.';
-                            sleep(2);
+                        // Log para debugging
+                        if ($user) {
+                            error_log("User found - ID: {$user['Id_usuario']}, Hash length: " . strlen($user['Contraseña']));
+                        } else {
+                            error_log("User not found for DNI: $dni");
                         }
+
+                        // ✅ CORRECCIÓN 4: Verificación mejorada del hash
+                        if ($user) {
+                            $storedHash = $user['Contraseña'];
+                            
+                            // Verificar que el hash tenga el formato correcto
+                            if (strlen($storedHash) < 60) {
+                                error_log("Invalid hash format for user {$user['Id_usuario']}");
+                                $error = 'Error en la cuenta. Contacta al administrador.';
+                            } else {
+                                // Verificar contraseña
+                                if (password_verify($password, $storedHash)) {
+                                    // ✅ Login exitoso
+                                    
+                                    // Limpiar intentos fallidos
+                                    unset($_SESSION['login_attempts'][$ip]);
+                                    
+                                    // Regenerar ID de sesión
+                                    session_regenerate_id(true);
+                                    
+                                    // Guardar datos en sesión
+                                    $_SESSION['Id_usuario'] = (int)$user['Id_usuario'];
+                                    $_SESSION['dni'] = $user['dni'];
+                                    $_SESSION['email'] = $user['email'];
+                                    $_SESSION['Nombre'] = $user['Nombre'];
+                                    $_SESSION['Apellido'] = $user['Apellido'];
+                                    $_SESSION['Rol'] = $user['Rol'];
+                                    $_SESSION['login_time'] = time();
+                                    $_SESSION['ip_address'] = $ip;
+
+                                    // Actualizar último acceso
+                                    $updateStmt = $pdo->prepare("
+                                        UPDATE usuario 
+                                        SET ultimo_acceso = NOW() 
+                                        WHERE Id_usuario = ?
+                                    ");
+                                    $updateStmt->execute([$user['Id_usuario']]);
+
+                                    // Log exitoso
+                                    error_log("Successful login: User {$user['Id_usuario']} from IP $ip");
+
+                                    // Redirigir según el rol
+                                    if ($user['Rol'] === 'medico' || $user['Rol'] === 'secretaria') {
+                                        header('Location: admin.php');
+                                    } else {
+                                        header('Location: index.php');
+                                    }
+                                    exit;
+                                } else {
+                                    // Contraseña incorrecta
+                                    error_log("Password mismatch for DNI: $dni");
+                                    $error = 'DNI o contraseña incorrectos';
+                                    recordFailedAttempt($ip);
+                                    sleep(rand(1, 3));
+                                }
+                            }
+                        } else {
+                            // Usuario no encontrado
+                            $error = 'DNI o contraseña incorrectos';
+                            recordFailedAttempt($ip);
+                            sleep(rand(1, 3));
+                        }
+                    } catch (Throwable $e) {
+                        error_log('Login error: ' . $e->getMessage());
+                        $error = 'Error al procesar el inicio de sesión. Intenta nuevamente.';
+                        sleep(2);
                     }
                 }
             }
@@ -376,6 +364,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             text-decoration: underline;
         }
 
+        /* ✅ Botón de ayuda para debugging */
+        .debug-info {
+            margin-top: 20px;
+            padding: 12px;
+            background: rgba(34, 211, 238, 0.1);
+            border: 1px solid rgba(34, 211, 238, 0.3);
+            border-radius: 8px;
+            font-size: 12px;
+            color: #94a3b8;
+            display: none;
+        }
+
+        .debug-info.show {
+            display: block;
+        }
+
         @media (max-width: 600px) {
             .card {
                 padding: 24px;
@@ -435,9 +439,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <button type="submit" class="btn">Iniciar sesión</button>
             </form>
 
+            <!-- ✅ Info de ayuda para debugging -->
+            <div class="debug-info" id="debugInfo">
+                <strong>💡 ¿Problemas para iniciar sesión?</strong><br>
+                • Verificá que el DNI sea correcto (solo números)<br>
+                • Verificá que la contraseña sea la que usaste al registrarte<br>
+                • Si acabás de registrarte, probá con la misma contraseña<br>
+                • Si el problema persiste, contactá al administrador
+            </div>
+
             <div class="footer">
                 ¿No tenés cuenta? <a href="register.php">Crear cuenta</a> · 
                 <a href="index.php">Volver al inicio</a>
+                <br><br>
+                <a href="#" onclick="document.getElementById('debugInfo').classList.toggle('show'); return false;" style="font-size: 12px;">¿Problemas para ingresar?</a>
             </div>
         </div>
     </div>
