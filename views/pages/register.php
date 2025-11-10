@@ -1,8 +1,10 @@
 <?php
 /**
- * register.php - Registro de usuarios con validaciones mejoradas
+ * register.php - Registro de usuarios
+ * VERSIÓN CORREGIDA Y SINCRONIZADA CON LOGIN Y BD
  */
-// Configuración de seguridad (ANTES de session_start)
+
+// ✅ Configuración de seguridad (ANTES de session_start)
 ini_set('session.cookie_httponly', 1);
 ini_set('session.cookie_secure', 1);
 ini_set('session.use_only_cookies', 1);
@@ -10,6 +12,7 @@ ini_set('session.use_only_cookies', 1);
 session_start();
 require_once __DIR__ . '/../../config/db.php';
 
+// ✅ Generar CSRF token
 if (empty($_SESSION['csrf_token'])) {
     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 }
@@ -18,39 +21,46 @@ $csrf = $_SESSION['csrf_token'];
 $pdo = db();
 $errors = [];
 
-// Lista de contraseñas comunes (ampliada)
+// ✅ Lista de contraseñas comunes ampliada
 $commonPasswords = [
     'password', '123456', '12345678', 'qwerty', 'abc123',
     'password123', '111111', '123123', 'admin', 'letmein',
-    'welcome', 'monkey', '1234567', 'dragon', 'master'
+    'welcome', 'monkey', '1234567', 'dragon', 'master',
+    'iloveyou', 'princess', 'starwars', 'superman', 'batman',
+    '654321', '696969', 'trustno1', 'michael', 'jennifer'
 ];
 
-// Dominios de email desechables
+// ✅ Dominios de email desechables
 $disposableEmailDomains = [
     'tempmail.com', '10minutemail.com', 'guerrillamail.com',
-    'mailinator.com', 'throwaway.email', 'temp-mail.org'
+    'mailinator.com', 'throwaway.email', 'temp-mail.org',
+    'maildrop.cc', 'yopmail.com', 'fakeinbox.com', 'trashmail.com'
 ];
 
-// Función para limpiar y validar entrada
+// ========== FUNCIONES DE VALIDACIÓN ==========
+
 function sanitizeInput($data) {
     return htmlspecialchars(trim(stripslashes($data)), ENT_QUOTES, 'UTF-8');
 }
 
-// Función para validar DNI argentino
 function validateDNI($dni) {
+    // Solo números
     if (!ctype_digit($dni)) {
         return 'El DNI debe contener solo números';
     }
     
+    // Longitud correcta
     $len = strlen($dni);
     if ($len < 7 || $len > 10) {
         return 'El DNI debe tener entre 7 y 10 dígitos';
     }
     
+    // No todos los dígitos iguales
     if (preg_match('/^(\d)\1+$/', $dni)) {
         return 'El DNI no puede tener todos los dígitos iguales';
     }
     
+    // Rango válido para DNI argentino
     $dniNum = intval($dni);
     if ($dniNum < 1000000 || $dniNum > 99999999) {
         return 'El DNI está fuera del rango válido';
@@ -59,7 +69,6 @@ function validateDNI($dni) {
     return null;
 }
 
-// Función para validar nombres
 function validateName($name, $fieldName) {
     $name = trim($name);
     
@@ -90,10 +99,14 @@ function validateName($name, $fieldName) {
         return "El $fieldName no puede tener espacios consecutivos";
     }
     
+    // No empezar/terminar con caracteres especiales
+    if (preg_match('/^[-\'\s]|[-\'\s]$/', $name)) {
+        return "El $fieldName no puede empezar o terminar con caracteres especiales";
+    }
+    
     return null;
 }
 
-// Función para validar email
 function validateEmail($email, $disposableEmailDomains) {
     $email = strtolower(trim($email));
     
@@ -101,6 +114,7 @@ function validateEmail($email, $disposableEmailDomains) {
         return 'El email es obligatorio';
     }
     
+    // Formato básico
     if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
         return 'El formato del email no es válido';
     }
@@ -120,7 +134,7 @@ function validateEmail($email, $disposableEmailDomains) {
         return 'No se permiten emails temporales o desechables';
     }
     
-    // Verificar que el dominio tenga registros MX
+    // Verificar registros MX del dominio
     if (!checkdnsrr($domain, "MX")) {
         return 'El dominio del email no existe';
     }
@@ -135,10 +149,15 @@ function validateEmail($email, $disposableEmailDomains) {
         return 'El email no puede tener puntos consecutivos';
     }
     
+    // No empezar/terminar con punto
+    $localPart = $parts[0];
+    if ($localPart[0] === '.' || $localPart[strlen($localPart) - 1] === '.') {
+        return 'El email no puede empezar o terminar con punto';
+    }
+    
     return null;
 }
 
-// Función para validar fortaleza de contraseña
 function validatePassword($password, $commonPasswords) {
     if (empty($password)) {
         return 'La contraseña es obligatoria';
@@ -167,8 +186,9 @@ function validatePassword($password, $commonPasswords) {
     }
     
     // Verificar contraseñas comunes
+    $lowerPassword = strtolower($password);
     foreach ($commonPasswords as $common) {
-        if (stripos($password, $common) !== false) {
+        if (stripos($lowerPassword, $common) !== false) {
             return 'La contraseña es demasiado común. Elegí una más segura';
         }
     }
@@ -178,10 +198,14 @@ function validatePassword($password, $commonPasswords) {
         return 'La contraseña no puede contener espacios';
     }
     
+    // No permitir solo números o solo letras
+    if (ctype_digit($password) || ctype_alpha($password)) {
+        return 'La contraseña debe combinar letras y números';
+    }
+    
     return null;
 }
 
-// Función para detectar patrones de inyección
 function detectInjectionPatterns($input) {
     $patterns = [
         '/(\bOR\b|\bAND\b|\bUNION\b|\bSELECT\b|\bDROP\b|\bINSERT\b|\bDELETE\b|\bUPDATE\b)/i',
@@ -198,7 +222,7 @@ function detectInjectionPatterns($input) {
     return false;
 }
 
-// Cargar obras sociales activas
+// ✅ Cargar obras sociales activas
 $obras_sociales = [];
 try {
     $stmt = $pdo->query("SELECT Id_obra_social, Nombre FROM obra_social WHERE Activo=1 ORDER BY Nombre");
@@ -208,14 +232,15 @@ try {
     $obras_sociales = [];
 }
 
-// Procesar formulario
+// ========== PROCESAR FORMULARIO ==========
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Verificar CSRF token
     $token = $_POST['csrf_token'] ?? '';
     if (!$token || !hash_equals($csrf, $token)) {
         $errors[] = 'Token de seguridad inválido. Recarga la página e intenta nuevamente.';
     } else {
-        // Sanitizar entradas
+        // ✅ Sanitizar entradas
         $dni      = sanitizeInput($_POST['dni'] ?? '');
         $nombre   = sanitizeInput($_POST['nombre'] ?? '');
         $apellido = sanitizeInput($_POST['apellido'] ?? '');
@@ -227,47 +252,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $nroCarnet = sanitizeInput($_POST['nro_carnet'] ?? '');
         $libreta  = sanitizeInput($_POST['libreta_sanitaria'] ?? '');
 
-        // Validar DNI
+        // ✅ Validaciones
         $dniError = validateDNI($dni);
         if ($dniError) {
             $errors[] = $dniError;
         }
 
-        // Validar nombre
         $nombreError = validateName($nombre, 'nombre');
         if ($nombreError) {
             $errors[] = $nombreError;
         }
 
-        // Validar apellido
         $apellidoError = validateName($apellido, 'apellido');
         if ($apellidoError) {
             $errors[] = $apellidoError;
         }
 
-        // Validar email
         $emailError = validateEmail($email, $disposableEmailDomains);
         if ($emailError) {
             $errors[] = $emailError;
         }
 
-        // Validar contraseña
         $passwordError = validatePassword($password, $commonPasswords);
         if ($passwordError) {
             $errors[] = $passwordError;
         }
 
-        // Verificar que las contraseñas coincidan
+        // Verificar coincidencia de contraseñas
         if ($password !== $password2) {
             $errors[] = 'Las contraseñas no coinciden';
         }
 
-        // Detectar patrones de inyección en todos los campos
+        // Detectar patrones de inyección
         $fieldsToCheck = [$dni, $nombre, $apellido, $email, $obraOtra, $nroCarnet, $libreta];
         foreach ($fieldsToCheck as $field) {
             if (detectInjectionPatterns($field)) {
                 $errors[] = 'Se detectó un patrón de entrada inválido';
-                error_log("Possible injection attempt in registration from IP: " . ($_SERVER['REMOTE_ADDR'] ?? 'unknown'));
+                error_log("Injection attempt in registration from IP: " . ($_SERVER['REMOTE_ADDR'] ?? 'unknown'));
                 break;
             }
         }
@@ -299,7 +320,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $errors[] = 'El número de carnet es demasiado largo';
         }
 
-        // Procesar registro si no hay errores
+        // ✅ Procesar registro si no hay errores
         if (empty($errors)) {
             try {
                 $pdo->beginTransaction();
@@ -312,9 +333,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     throw new Exception('El email o DNI ya están registrados');
                 }
 
-                // Si eligió "Otra", crear la nueva obra social
+                // Si eligió "Otra", crear o buscar la obra social
                 if ($idObra === -1 && !empty($obraOtra)) {
-                    // Verificar si ya existe
                     $stmt = $pdo->prepare("SELECT Id_obra_social FROM obra_social WHERE Nombre = ? LIMIT 1");
                     $stmt->execute([$obraOtra]);
                     $existingId = $stmt->fetchColumn();
@@ -322,19 +342,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     if ($existingId) {
                         $idObra = (int)$existingId;
                     } else {
-                        // Crear nueva obra social
                         $stmt = $pdo->prepare("INSERT INTO obra_social (Nombre, Activo) VALUES (?, 1)");
                         $stmt->execute([$obraOtra]);
                         $idObra = (int)$pdo->lastInsertId();
                     }
                 }
 
-                // Hash de contraseña con Bcrypt (costo 12 para mayor seguridad)
+                // ✅ Hash de contraseña con Bcrypt (cost 12)
                 $passwordHash = password_hash($password, PASSWORD_BCRYPT, ['cost' => 12]);
 
-                // Insertar usuario
+                // ✅ Insertar usuario (usando nombres de columnas en minúsculas)
                 $stmtUser = $pdo->prepare("
-                    INSERT INTO usuario (Nombre, Apellido, dni, email, Contraseña, Rol, fecha_registro) 
+                    INSERT INTO usuario (Nombre, Apellido, dni, email, Contraseña, Rol, Fecha_Registro) 
                     VALUES (?, ?, ?, ?, ?, 'paciente', NOW())
                 ");
                 $stmtUser->execute([$nombre, $apellido, $dni, $email, $passwordHash]);
@@ -347,17 +366,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ");
                 $stmtPaciente->execute([
                     $idObra > 0 ? $idObra : null, 
-                    $nroCarnet !== '' ? $nroCarnet : null, 
+                    !empty($nroCarnet) ? $nroCarnet : null, 
                     $libreta, 
                     $userId
                 ]);
 
                 $pdo->commit();
 
-                // Registrar registro exitoso
+                // ✅ Log del registro
                 error_log("New user registered: ID $userId, DNI $dni");
 
-                // Login automático
+                // ✅ Login automático
                 session_regenerate_id(true);
                 
                 $_SESSION['Id_usuario'] = $userId;
@@ -369,6 +388,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $_SESSION['login_time'] = time();
                 $_SESSION['ip_address'] = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
 
+                // Redirigir
                 header('Location: index.php');
                 exit;
 
@@ -511,11 +531,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             cursor: pointer;
         }
 
-        select option {
-            background: #111827;
-            color: #e5e7eb;
-        }
-
         .btn {
             width: 100%;
             padding: 14px;
@@ -534,10 +549,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             background: #0891b2;
             transform: translateY(-1px);
             box-shadow: 0 4px 12px rgba(34, 211, 238, 0.3);
-        }
-
-        .btn:active {
-            transform: translateY(0);
         }
 
         .btn:disabled {
@@ -568,20 +579,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             gap: 12px;
         }
 
-        @media (max-width: 600px) {
-            .card {
-                padding: 24px;
-            }
-
-            .grid-2 {
-                grid-template-columns: 1fr;
-            }
-
-            h1 {
-                font-size: 24px;
-            }
-        }
-
         .password-strength {
             font-size: 12px;
             margin-top: 4px;
@@ -592,6 +589,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             font-size: 12px;
             color: #6b7280;
             margin-top: 4px;
+        }
+
+        @media (max-width: 600px) {
+            .card { padding: 24px; }
+            .grid-2 { grid-template-columns: 1fr; }
+            h1 { font-size: 24px; }
         }
     </style>
 </head>
@@ -702,7 +705,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         placeholder="Ej: IOSPER, OSECAC, etc."
                         maxlength="100"
                     >
-                    <div class="hint">Ingresá el nombre completo de tu obra social</div>
                 </div>
 
                 <div class="field">
@@ -715,7 +717,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         placeholder="Ej: 123456789"
                         maxlength="50"
                     >
-                    <div class="hint">Opcional - Si tenés obra social, ingresá tu número de carnet</div>
+                    <div class="hint">Opcional</div>
                 </div>
 
                 <div class="field">
