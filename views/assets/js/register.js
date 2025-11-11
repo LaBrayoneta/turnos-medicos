@@ -1,3 +1,5 @@
+// register.js - Validaciones de formulario de registro con verificación CSRF
+
 (function() {
     'use strict';
 
@@ -12,6 +14,21 @@
     const obraSelect = document.getElementById('id_obra_social');
     const fieldOtraObra = document.getElementById('fieldObraOtra');
     const otraObraInput = document.getElementById('obra_social_otra');
+    const csrfTokenInput = document.getElementById('csrf_token');
+
+    // ✅ VERIFICACIÓN CSRF AL CARGAR
+    if (csrfTokenInput) {
+        const tokenValue = csrfTokenInput.value;
+        console.log('🔐 CSRF Token cargado:', tokenValue ? tokenValue.substring(0, 10) + '...' : 'VACÍO');
+        
+        if (!tokenValue || tokenValue.length < 32) {
+            console.error('❌ ERROR: Token CSRF inválido o faltante');
+            alert('⚠️ ERROR CRÍTICO\n\nEl token de seguridad no se cargó correctamente.\n\nRecarga la página (F5) antes de continuar.');
+        }
+    } else {
+        console.error('❌ ERROR: Input del token CSRF no encontrado');
+        alert('⚠️ ERROR CRÍTICO\n\nNo se encontró el campo de seguridad.\n\nRecarga la página (F5).');
+    }
 
     // Lista de contraseñas comunes a evitar
     const commonPasswords = [
@@ -62,24 +79,20 @@
             return `El ${fieldName} no puede tener más de 50 caracteres`;
         }
 
-        // Solo letras, espacios, guiones y apóstrofes (nombres compuestos)
         if (!/^[a-záéíóúñü\s'-]+$/i.test(trimmed)) {
             return `El ${fieldName} solo puede contener letras, espacios, guiones y apóstrofes`;
         }
 
-        // No permitir números
         if (/\d/.test(trimmed)) {
             return `El ${fieldName} no puede contener números`;
         }
 
-        // No permitir más de un espacio consecutivo
         if (/\s{2,}/.test(trimmed)) {
             return `El ${fieldName} no puede tener espacios consecutivos`;
         }
 
-        // No permitir que empiece o termine con caracteres especiales
         if (/^[-'\s]|[-'\s]$/.test(trimmed)) {
-            return `El ${fieldName} no puede empezar o terminar con guiones, apóstrofes o espacios`;
+            return `El ${fieldName} no puede empezar o terminar con caracteres especiales`;
         }
 
         return null;
@@ -96,7 +109,6 @@
             return 'El DNI debe tener entre 7 y 10 dígitos';
         }
         
-        // No todos los dígitos iguales
         if (/^(\d)\1+$/.test(dni)) {
             return 'El DNI no puede tener todos los dígitos iguales';
         }
@@ -117,34 +129,28 @@
 
         const trimmed = email.trim().toLowerCase();
 
-        // Formato básico de email
         const emailRegex = /^[a-z0-9]([a-z0-9._-]*[a-z0-9])?@[a-z0-9]([a-z0-9.-]*[a-z0-9])?\.[a-z]{2,}$/i;
         if (!emailRegex.test(trimmed)) {
             return 'El formato del email no es válido';
         }
 
-        // Longitud máxima
         if (trimmed.length > 255) {
             return 'El email es demasiado largo';
         }
 
-        // Verificar dominio desechable
         const domain = trimmed.split('@')[1];
         if (disposableEmailDomains.includes(domain)) {
             return 'No se permiten emails temporales o desechables';
         }
 
-        // No permitir múltiples @
         if ((trimmed.match(/@/g) || []).length > 1) {
             return 'El email no puede contener múltiples @';
         }
 
-        // No permitir puntos consecutivos
         if (/\.{2,}/.test(trimmed)) {
             return 'El email no puede tener puntos consecutivos';
         }
 
-        // No permitir que empiece o termine con punto
         const localPart = trimmed.split('@')[0];
         if (localPart.startsWith('.') || localPart.endsWith('.')) {
             return 'El email no puede empezar o terminar con punto';
@@ -160,18 +166,15 @@
 
         if (pwd.length === 0) return { strength: 0, feedback: [] };
 
-        // Longitud
         if (pwd.length >= 8) strength += 1;
         if (pwd.length >= 12) strength += 1;
         if (pwd.length >= 16) strength += 1;
 
-        // Complejidad
         if (/[a-z]/.test(pwd)) strength += 1;
         if (/[A-Z]/.test(pwd)) strength += 1;
         if (/[0-9]/.test(pwd)) strength += 1;
         if (/[^a-zA-Z0-9]/.test(pwd)) strength += 1;
 
-        // Penalizaciones
         if (/^(.)\1+$/.test(pwd)) {
             strength = 0;
             feedback.push('No uses caracteres repetidos');
@@ -182,7 +185,6 @@
             feedback.push('Evitá secuencias obvias');
         }
 
-        // Verificar contraseñas comunes
         const lowerPwd = pwd.toLowerCase();
         if (commonPasswords.some(common => lowerPwd.includes(common))) {
             strength = 0;
@@ -251,7 +253,6 @@
             }
         });
 
-        // También prevenir copiar/pegar de contraseñas con espacios
         input?.addEventListener('paste', function(e) {
             setTimeout(() => {
                 if (this.value.includes(' ')) {
@@ -268,7 +269,6 @@
         const oldValue = this.value;
         this.value = this.value.replace(/[^0-9]/g, '');
         
-        // Mantener posición del cursor si se eliminaron caracteres
         if (oldValue.length !== this.value.length) {
             this.setSelectionRange(cursorPos - 1, cursorPos - 1);
         }
@@ -277,27 +277,18 @@
     // Validar y limpiar nombres en tiempo real
     [nombreInput, apellidoInput].forEach(input => {
         input?.addEventListener('input', function(e) {
-            const cursorPos = this.selectionStart;
-            const oldValue = this.value;
-            
-            // Eliminar caracteres no permitidos (mantener acentos)
             this.value = this.value.replace(/[^a-záéíóúñü\s'-]/gi, '');
-            
-            // Evitar espacios múltiples
             this.value = this.value.replace(/\s{2,}/g, ' ');
             
-            // Evitar espacios al inicio
             if (this.value.startsWith(' ')) {
                 this.value = this.value.trim();
             }
             
-            // Capitalizar primera letra (opcional, mejora UX)
             if (this.value.length === 1) {
                 this.value = this.value.toUpperCase();
             }
         });
 
-        // Validar al perder el foco
         input?.addEventListener('blur', function() {
             this.value = this.value.trim();
             
@@ -329,8 +320,19 @@
     form?.addEventListener('submit', function(e) {
         e.preventDefault();
 
-        // Prevenir doble envío
+        // ✅ VERIFICAR TOKEN CSRF ANTES DE ENVIAR
+        const tokenValue = csrfTokenInput ? csrfTokenInput.value : '';
+        
+        if (!tokenValue || tokenValue.length < 32) {
+            alert('⚠️ ERROR DE SEGURIDAD\n\nEl token de protección es inválido.\n\nRecarga la página (F5) e intenta nuevamente.');
+            console.error('Token CSRF inválido:', tokenValue);
+            return false;
+        }
+
+        console.log('🔐 Enviando formulario con token:', tokenValue.substring(0, 10) + '...');
+
         if (isSubmitting) {
+            console.log('⚠️ Formulario ya está siendo enviado');
             return false;
         }
 
@@ -380,7 +382,6 @@
             errors.push('La contraseña debe contener al menos un número');
         }
 
-        // Verificar contraseñas comunes
         const lowerPwd = pwd.toLowerCase();
         if (commonPasswords.some(common => lowerPwd.includes(common))) {
             errors.push('La contraseña es demasiado común. Elegí una más segura');
@@ -390,7 +391,6 @@
             errors.push('Las contraseñas no coinciden');
         }
 
-        // Verificar que no contenga espacios
         if (pwd.includes(' ') || pwd2.includes(' ')) {
             errors.push('Las contraseñas no pueden contener espacios');
         }
@@ -423,7 +423,7 @@
             errors.push('La libreta sanitaria es demasiado larga');
         }
 
-        // Validar número de carnet (opcional, pero si se ingresa debe ser válido)
+        // Validar número de carnet (opcional)
         const nroCarnet = document.getElementById('nro_carnet')?.value.trim();
         if (nroCarnet && nroCarnet.length > 50) {
             errors.push('El número de carnet es demasiado largo');
@@ -433,7 +433,6 @@
         if (errors.length > 0) {
             alert('⚠️ Por favor corregí los siguientes errores:\n\n• ' + errors.join('\n• '));
             
-            // Scroll al primer campo con error
             const firstErrorField = form.querySelector('input[style*="border-color: rgb(239, 68, 68)"]');
             if (firstErrorField) {
                 firstErrorField.focus();
@@ -459,6 +458,7 @@
         inputs.forEach(input => input.disabled = true);
 
         // Todo OK - enviar formulario
+        console.log('✅ Validación completa - Enviando formulario');
         form.submit();
     });
 

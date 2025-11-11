@@ -129,7 +129,7 @@ CREATE TABLE `horario_medico` (
   KEY `idx_medico_dia` (`Id_medico`,`Dia_semana`),
   KEY `idx_horario_dia` (`Dia_semana`,`Hora_inicio`),
   CONSTRAINT `fk_horario_medico` FOREIGN KEY (`Id_medico`) REFERENCES `medico` (`Id_medico`) ON DELETE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=16 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=13 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -138,7 +138,7 @@ CREATE TABLE `horario_medico` (
 
 LOCK TABLES `horario_medico` WRITE;
 /*!40000 ALTER TABLE `horario_medico` DISABLE KEYS */;
-INSERT INTO `horario_medico` VALUES (1,1,'lunes','08:00:00','12:00:00'),(2,1,'lunes','14:00:00','18:00:00'),(3,1,'miercoles','08:00:00','12:00:00'),(4,1,'viernes','14:00:00','18:00:00'),(5,2,'lunes','09:00:00','13:00:00'),(6,2,'martes','09:00:00','13:00:00'),(7,2,'jueves','09:00:00','13:00:00'),(8,2,'viernes','09:00:00','13:00:00'),(9,3,'lunes','08:00:00','14:00:00'),(10,3,'martes','08:00:00','14:00:00'),(11,3,'miercoles','08:00:00','14:00:00'),(12,3,'jueves','08:00:00','14:00:00'),(13,3,'viernes','08:00:00','14:00:00'),(14,4,'martes','14:00:00','19:00:00'),(15,4,'jueves','14:00:00','19:00:00');
+INSERT INTO `horario_medico` VALUES (1,1,'lunes','08:00:00','12:00:00'),(2,1,'lunes','14:00:00','18:00:00'),(3,1,'martes','08:00:00','12:00:00'),(4,1,'martes','14:00:00','18:00:00'),(5,1,'miercoles','08:00:00','12:00:00'),(6,1,'miercoles','14:00:00','18:00:00'),(7,1,'jueves','08:00:00','12:00:00'),(8,1,'jueves','14:00:00','18:00:00'),(9,1,'viernes','08:00:00','12:00:00'),(10,1,'viernes','14:00:00','18:00:00'),(11,2,'miercoles','08:00:00','12:00:00'),(12,2,'viernes','13:00:00','18:00:00');
 /*!40000 ALTER TABLE `horario_medico` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -196,7 +196,7 @@ CREATE TABLE `medico` (
   KEY `idx_especialidad_activo` (`Id_Especialidad`,`Activo`),
   CONSTRAINT `medico_especialidad_FK` FOREIGN KEY (`Id_Especialidad`) REFERENCES `especialidad` (`Id_Especialidad`) ON DELETE RESTRICT,
   CONSTRAINT `medico_usuario_FK` FOREIGN KEY (`Id_usuario`) REFERENCES `usuario` (`Id_usuario`) ON DELETE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=5 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -205,7 +205,7 @@ CREATE TABLE `medico` (
 
 LOCK TABLES `medico` WRITE;
 /*!40000 ALTER TABLE `medico` DISABLE KEYS */;
-INSERT INTO `medico` VALUES (1,'MED-001',3,3,30,1),(2,'MED-002',4,2,30,1),(3,'MED-003',5,1,30,1),(4,'MED-004',6,5,30,1);
+INSERT INTO `medico` VALUES (1,'MED-001',2,3,30,0),(2,'135-a',4,6,30,1);
 /*!40000 ALTER TABLE `medico` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -259,7 +259,7 @@ CREATE TABLE `paciente` (
   KEY `fk_paciente_obra_social` (`Id_obra_social`),
   CONSTRAINT `fk_paciente_obra_social` FOREIGN KEY (`Id_obra_social`) REFERENCES `obra_social` (`Id_obra_social`) ON DELETE SET NULL,
   CONSTRAINT `paciente_usuario_FK` FOREIGN KEY (`Id_usuario`) REFERENCES `usuario` (`Id_usuario`) ON DELETE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -268,7 +268,7 @@ CREATE TABLE `paciente` (
 
 LOCK TABLES `paciente` WRITE;
 /*!40000 ALTER TABLE `paciente` DISABLE KEYS */;
-INSERT INTO `paciente` VALUES (1,6,'12345','LIB-001',7,1,'2025-11-10 05:12:16'),(2,1,'67890','LIB-002',8,1,'2025-11-10 05:12:16'),(3,9,NULL,'LIB-003',9,1,'2025-11-10 05:12:16');
+INSERT INTO `paciente` VALUES (1,6,'123456789','LIB-2024-001',3,1,'2025-11-10 05:30:20');
 /*!40000 ALTER TABLE `paciente` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -336,7 +336,7 @@ CREATE TABLE `secretaria` (
 
 LOCK TABLES `secretaria` WRITE;
 /*!40000 ALTER TABLE `secretaria` DISABLE KEYS */;
-INSERT INTO `secretaria` VALUES (1,1,1,'2025-11-10 05:12:16'),(2,2,1,'2025-11-10 05:12:16');
+INSERT INTO `secretaria` VALUES (1,1,0,'2025-11-10 05:30:20'),(2,5,1,'2025-11-11 22:11:58');
 /*!40000 ALTER TABLE `secretaria` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -524,13 +524,16 @@ CREATE TABLE `usuario` (
   `Rol` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT '',
   `Fecha_Registro` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   `ultimo_acceso` datetime DEFAULT NULL,
+  `failed_login_attempts` int DEFAULT '0',
+  `last_failed_login` datetime DEFAULT NULL,
+  `account_locked_until` datetime DEFAULT NULL,
   PRIMARY KEY (`Id_usuario`),
   UNIQUE KEY `email_UNIQUE` (`email`),
   UNIQUE KEY `dni_UNIQUE` (`dni`),
   KEY `idx_rol` (`Rol`),
   KEY `idx_email` (`email`),
   KEY `idx_usuario_search` (`dni`,`email`,`Nombre`,`Apellido`)
-) ENGINE=InnoDB AUTO_INCREMENT=10 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=6 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -539,7 +542,7 @@ CREATE TABLE `usuario` (
 
 LOCK TABLES `usuario` WRITE;
 /*!40000 ALTER TABLE `usuario` DISABLE KEYS */;
-INSERT INTO `usuario` VALUES (1,'María','González','38765432','maria.gonzalez@clinica.com','$2y$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGmXn42LX8MkVbQrAu','secretaria','2025-11-10 05:12:16',NULL),(2,'Laura','Fernández','40123456','laura.fernandez@clinica.com','$2y$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGmXn42LX8MkVbQrAu','secretaria','2025-11-10 05:12:16',NULL),(3,'Carlos','Ramírez','30123456','carlos.ramirez@clinica.com','$2y$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGmXn42LX8MkVbQrAu','medico','2025-11-10 05:12:16',NULL),(4,'Ana','Martínez','31234567','ana.martinez@clinica.com','$2y$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGmXn42LX8MkVbQrAu','medico','2025-11-10 05:12:16',NULL),(5,'Roberto','Silva','32345678','roberto.silva@clinica.com','$2y$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGmXn42LX8MkVbQrAu','medico','2025-11-10 05:12:16',NULL),(6,'Patricia','López','33456789','patricia.lopez@clinica.com','$2y$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGmXn42LX8MkVbQrAu','medico','2025-11-10 05:12:16',NULL),(7,'Juan','Pérez','40111222','juan.perez@email.com','$2y$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGmXn42LX8MkVbQrAu','paciente','2025-11-10 05:12:16',NULL),(8,'María','Rodríguez','40222333','maria.rodriguez@email.com','$2y$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGmXn42LX8MkVbQrAu','paciente','2025-11-10 05:12:16',NULL),(9,'Pedro','Gómez','40333444','pedro.gomez@email.com','$2y$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGmXn42LX8MkVbQrAu','paciente','2025-11-10 05:12:16',NULL);
+INSERT INTO `usuario` VALUES (1,'Ana','García','30111222','secretaria@clinica.com','$2y$10$K4UKHiv1RngkC7u873T88eSeAmOqskN46mI4b5VHDX4uCTRlImHQC','secretaria','2025-11-10 05:30:20','2025-11-11 19:03:52',0,NULL,NULL),(2,'Carlos','Rodríguez','28222333','medico@clinica.com','$2y$10$K4UKHiv1RngkC7u873T88eSeAmOqskN46mI4b5VHDX4uCTRlImHQC','medico','2025-11-10 05:30:20',NULL,0,NULL,NULL),(3,'María','López','40333444','paciente@email.com','$2y$10$K4UKHiv1RngkC7u873T88eSeAmOqskN46mI4b5VHDX4uCTRlImHQC','paciente','2025-11-10 05:30:20',NULL,0,NULL,NULL),(4,'Braian','Salgado','48165176','braian@gmail.com','$2y$10$DjR2YWlnwvnD1MBpzSBnLepztKnByk0RzfPCS4Hd7h5njQpVHach6','medico','2025-11-11 22:08:01',NULL,0,NULL,NULL),(5,'Lucia','Lopez','4655432','lucia@gmail.com','$2y$10$Pk022mBP.vkkV9QzLnEU5eFjZ1AcVvpPOLCn7grSxIikEd4X8G8aW','secretaria','2025-11-11 22:11:58',NULL,0,NULL,NULL);
 /*!40000 ALTER TABLE `usuario` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -1013,4 +1016,4 @@ DELIMITER ;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2025-11-10  2:16:57
+-- Dump completed on 2025-11-11 19:21:07
