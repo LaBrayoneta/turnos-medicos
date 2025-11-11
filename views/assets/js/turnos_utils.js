@@ -75,7 +75,7 @@ const TurnosUtils = {
 
     inputElement.setAttribute('min', today);
     inputElement.setAttribute('max', max);
-    inputElement.value = ''; // Limpiar valor inicial
+    inputElement.value = '';
 
     // Validación en tiempo real
     inputElement.addEventListener('input', (e) => {
@@ -109,12 +109,12 @@ const TurnosUtils = {
    * Formatea una fecha para mostrar
    */
   formatDateDisplay(dateStr) {
-    const date = new Date(dateStr);
-    const options = { 
-      weekday: 'long', 
-      year: 'numeric', 
-      month: 'long', 
-      day: 'numeric' 
+    const date = new Date(dateStr + 'T00:00:00');
+    const options = {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
     };
     return date.toLocaleDateString('es-AR', options);
   },
@@ -155,7 +155,7 @@ const TurnosUtils = {
   isWeekend(dateStr) {
     const date = new Date(dateStr + 'T00:00:00');
     const day = date.getDay();
-    return day === 0 || day === 6; // Domingo o Sábado
+    return day === 0 || day === 6;
   },
 
   /**

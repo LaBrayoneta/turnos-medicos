@@ -1,27 +1,34 @@
 <?php
-// views/pages/index.php - VERSIÓN CORREGIDA
-session_start();
-require_once __DIR__ . '/../../config/db.php';
-require_once __DIR__ . '/../../config/paths.php'; // ✅ Importar paths
+/**
+ * views/pages/index.php - VERSIÓN SIN BUCLES DE REDIRECCIÓN
+ */
 
+// Iniciar sesión
+session_start();
+
+// Incluir configuración
+require_once __DIR__ . '/../../config/db.php';
+require_once __DIR__ . '/../../config/paths.php';
+
+// Variables de sesión
 $logueado = !empty($_SESSION['Id_usuario']);
 $nombre = ($logueado ? ($_SESSION['Nombre'] ?? '') : '');
 $apellido = ($logueado ? ($_SESSION['Apellido'] ?? '') : '');
 $rol = ($logueado ? ($_SESSION['Rol'] ?? '') : '');
 
-// Redirigir a admin si es médico o secretaria
-if ($logueado && ($rol === 'medico' || $rol === 'secretaria')) {
-  header('Location: admin.php');
-  exit;
-}
+// ✅ IMPORTANTE: NO redirigir aquí, solo mostrar mensaje o enlace
+// Eliminar cualquier header('Location: ...') para evitar bucles
 
+// Generar token CSRF
 function ensureCsrf() {
-  if (empty($_SESSION['csrf_token'])) $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+  if (empty($_SESSION['csrf_token'])) {
+      $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+  }
   return $_SESSION['csrf_token'];
 }
 $csrf = ensureCsrf();
 
-// ✅ SOLUCIÓN: Definir correctamente la ruta base de la API
+// API Base URL
 $api_base_url = controller('turnos_api.php');
 ?>
 <!doctype html>
@@ -31,306 +38,28 @@ $api_base_url = controller('turnos_api.php');
   <title>Clínica Médica - Sistema de Turnos Online</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="csrf-token" content="<?= htmlspecialchars($csrf) ?>">
-  <!-- ✅ CRÍTICO: Definir la URL base de la API ANTES de cargar el JS -->
+  
   <script>
     window.API_BASE_URL = '<?= $api_base_url ?>';
-    console.log('🔧 API Base URL configurada:', window.API_BASE_URL);
+    console.log('🔧 API Base URL:', window.API_BASE_URL);
   </script>
+  
   <link rel="stylesheet" href="<?= asset('css/index.css') ?>">
-  <style>
-    /* Estilos adicionales mejorados */
-    :root {
-      --gradient-1: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      --gradient-2: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-      --gradient-3: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
-      --shadow-lg: 0 20px 60px rgba(0, 0, 0, 0.3);
-      --shadow-xl: 0 30px 80px rgba(0, 0, 0, 0.4);
-    }
-
-    .hero {
-      position: relative;
-      background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 50%, #0f172a 100%);
-      overflow: hidden;
-    }
-
-    .hero::before {
-      content: '';
-      position: absolute;
-      top: -50%;
-      right: -20%;
-      width: 600px;
-      height: 600px;
-      background: radial-gradient(circle, rgba(34,211,238,0.15) 0%, transparent 70%);
-      border-radius: 50%;
-      animation: float 20s ease-in-out infinite;
-    }
-
-    .hero::after {
-      content: '';
-      position: absolute;
-      bottom: -30%;
-      left: -10%;
-      width: 500px;
-      height: 500px;
-      background: radial-gradient(circle, rgba(139,92,246,0.1) 0%, transparent 70%);
-      border-radius: 50%;
-      animation: float 15s ease-in-out infinite reverse;
-    }
-
-    @keyframes float {
-      0%, 100% { transform: translate(0, 0) rotate(0deg); }
-      50% { transform: translate(30px, -30px) rotate(10deg); }
-    }
-
-    .hero-title {
-      background: linear-gradient(135deg, #22d3ee 0%, #8b5cf6 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-      animation: gradient-shift 3s ease infinite;
-    }
-
-    @keyframes gradient-shift {
-      0%, 100% { filter: hue-rotate(0deg); }
-      50% { filter: hue-rotate(20deg); }
-    }
-
-    .feature-card {
-      position: relative;
-      background: linear-gradient(145deg, #111827 0%, #1f2937 100%);
-      overflow: hidden;
-    }
-
-    .feature-card::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      height: 3px;
-      background: var(--gradient-3);
-      transform: scaleX(0);
-      transition: transform 0.3s;
-    }
-
-    .feature-card:hover::before {
-      transform: scaleX(1);
-    }
-
-    .feature-icon {
-      background: var(--gradient-3);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-      animation: pulse-icon 2s ease-in-out infinite;
-    }
-
-    @keyframes pulse-icon {
-      0%, 100% { transform: scale(1); }
-      50% { transform: scale(1.05); }
-    }
-
-    .day.available {
-      position: relative;
-      overflow: hidden;
-    }
-
-    .day.available::before {
-      content: '';
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      width: 0;
-      height: 0;
-      border-radius: 50%;
-      background: rgba(34,211,238,0.3);
-      transform: translate(-50%, -50%);
-      transition: width 0.3s, height 0.3s;
-    }
-
-    .day.available:hover::before {
-      width: 100%;
-      height: 100%;
-    }
-
-    .slot {
-      position: relative;
-      overflow: hidden;
-      background: linear-gradient(145deg, #0f172a 0%, #1a2332 100%);
-    }
-
-    .slot::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: -100%;
-      width: 100%;
-      height: 100%;
-      background: linear-gradient(90deg, transparent, rgba(34,211,238,0.3), transparent);
-      transition: left 0.5s;
-    }
-
-    .slot:hover::before {
-      left: 100%;
-    }
-
-    .slot.sel {
-      background: linear-gradient(135deg, #0e7490 0%, #155e75 100%);
-      box-shadow: 0 0 20px rgba(34,211,238,0.4);
-    }
-
-    .card {
-      background: linear-gradient(145deg, #111827 0%, #1a2332 100%);
-      box-shadow: var(--shadow-lg);
-    }
-
-    .btn.primary {
-      background: linear-gradient(135deg, #22d3ee 0%, #0891b2 100%);
-      box-shadow: 0 4px 15px rgba(34,211,238,0.4);
-      position: relative;
-      overflow: hidden;
-    }
-
-    .btn.primary::before {
-      content: '';
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      width: 0;
-      height: 0;
-      border-radius: 50%;
-      background: rgba(255,255,255,0.3);
-      transform: translate(-50%, -50%);
-      transition: width 0.6s, height 0.6s;
-    }
-
-    .btn.primary:active::before {
-      width: 300px;
-      height: 300px;
-    }
-
-    .table-wrap {
-      background: #0a0f1a;
-    }
-
-    tbody tr {
-      transition: all 0.2s;
-    }
-
-    tbody tr:hover {
-      background: linear-gradient(90deg, rgba(34,211,238,0.05) 0%, rgba(34,211,238,0.1) 50%, rgba(34,211,238,0.05) 100%);
-      transform: translateX(4px);
-    }
-
-    .badge.ok {
-      background: linear-gradient(135deg, rgba(16,185,129,0.2) 0%, rgba(5,150,105,0.2) 100%);
-      box-shadow: 0 0 10px rgba(16,185,129,0.3);
-    }
-
-    .badge.warn {
-      background: linear-gradient(135deg, rgba(251,146,60,0.2) 0%, rgba(234,88,12,0.2) 100%);
-      box-shadow: 0 0 10px rgba(251,146,60,0.3);
-    }
-
-    @keyframes shimmer {
-      0% { background-position: -1000px 0; }
-      100% { background-position: 1000px 0; }
-    }
-
-    .loading {
-      background: linear-gradient(90deg, #1a2332 25%, #2a3342 50%, #1a2332 75%);
-      background-size: 1000px 100%;
-      animation: shimmer 2s infinite;
-    }
-
-    .stats {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-      gap: 16px;
-      margin-top: 32px;
-    }
-
-    .stat-card {
-      background: rgba(17, 24, 39, 0.6);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 20px;
-      text-align: center;
-      backdrop-filter: blur(10px);
-    }
-
-    .stat-number {
-      font-size: 36px;
-      font-weight: 800;
-      color: var(--primary);
-      margin-bottom: 8px;
-    }
-
-    .stat-label {
-      color: var(--muted);
-      font-size: 14px;
-    }
-
-    .cal-grid {
-      gap: 8px;
-    }
-
-    .cal-header {
-      background: rgba(15, 23, 42, 0.5);
-      padding: 12px;
-      border-radius: 12px;
-      margin-bottom: 16px;
-    }
-
-    .cal-title {
-      font-size: 18px;
-      background: linear-gradient(135deg, #22d3ee 0%, #8b5cf6 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-    }
-
-    /* ✅ Indicador de conexión */
-    .connection-status {
-      position: fixed;
-      top: 70px;
-      right: 20px;
-      padding: 8px 16px;
-      border-radius: 8px;
-      font-size: 13px;
-      font-weight: 600;
-      z-index: 1000;
-      display: none;
-      animation: fadeIn 0.3s;
-    }
-
-    .connection-status.error {
-      background: rgba(239, 68, 68, 0.9);
-      color: white;
-      display: block;
-    }
-
-    .connection-status.success {
-      background: rgba(16, 185, 129, 0.9);
-      color: white;
-      display: block;
-    }
-
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(-10px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-  </style>
 </head>
 <body>
-  <!-- ✅ Indicador de estado de conexión -->
-  <div id="connectionStatus" class="connection-status"></div>
-
   <header class="hdr">
     <div class="brand">🏥 Clínica Médica</div>
     <div class="actions">
       <?php if ($logueado): ?>
-        <span style="color:var(--muted)">👋 Hola, <strong style="color:var(--primary)"><?= htmlspecialchars($nombre . ' ' . $apellido) ?></strong></span>
+        <span style="color:var(--muted)">
+          👋 Hola, <strong style="color:var(--primary)"><?= htmlspecialchars($nombre . ' ' . $apellido) ?></strong>
+        </span>
+        
+        <?php if ($rol === 'medico' || $rol === 'secretaria'): ?>
+          <!-- Mostrar enlace al panel admin en lugar de redirigir -->
+          <a class="btn primary" href="admin.php">📊 Ir al Panel Admin</a>
+        <?php endif; ?>
+        
         <form class="inline" action="<?= controller('logout.php') ?>" method="post" style="display:inline;margin:0">
           <button type="submit" class="btn ghost">🚪 Cerrar sesión</button>
         </form>
@@ -343,7 +72,7 @@ $api_base_url = controller('turnos_api.php');
 
   <main class="wrap">
     <?php if (!$logueado): ?>
-    <!-- PORTADA MEJORADA -->
+    <!-- ========== PORTADA PARA NO LOGUEADOS ========== -->
     <section class="hero">
       <div class="hero-content">
         <h1 class="hero-title">Tu salud, nuestra prioridad</h1>
@@ -359,32 +88,46 @@ $api_base_url = controller('turnos_api.php');
       <div class="feature-card">
         <div class="feature-icon">📅</div>
         <h3>Reserva Instantánea</h3>
-        <p>Elegí el día y horario que mejor se ajuste a tu agenda. Sin esperas telefónicas, todo desde tu dispositivo.</p>
+        <p>Elegí el día y horario que mejor se ajuste a tu agenda. Sin esperas telefónicas.</p>
       </div>
       <div class="feature-card">
         <div class="feature-icon">👨‍⚕️</div>
         <h3>Profesionales Calificados</h3>
-        <p>Accedé a especialistas en clínica médica, pediatría, cardiología, traumatología y más disciplinas.</p>
+        <p>Accedé a especialistas en diversas áreas de la medicina.</p>
       </div>
       <div class="feature-card">
         <div class="feature-icon">🔔</div>
         <h3>Gestión Total</h3>
-        <p>Cancelá o reprogramá tus turnos cuando lo necesites. Control total de tus citas médicas.</p>
+        <p>Cancelá o reprogramá tus turnos cuando lo necesites.</p>
       </div>
     </section>
 
     <section class="card" style="margin-top: 40px; text-align: center; padding: 40px;">
       <h2 style="color: var(--primary); margin-bottom: 16px;">¿Listo para dar el primer paso?</h2>
       <p style="color: var(--muted); margin-bottom: 24px; max-width: 600px; margin-left: auto; margin-right: auto;">
-        Únete a cientos de pacientes que ya confían en nuestro sistema. Crear una cuenta es rápido, seguro y completamente gratuito.
+        Crear una cuenta es rápido, seguro y completamente gratuito.
       </p>
       <a href="register.php" class="btn primary" style="display: inline-block; min-width: 200px; padding: 14px 28px;">Crear mi cuenta gratis</a>
     </section>
     
+    <?php elseif ($rol === 'medico' || $rol === 'secretaria'): ?>
+    <!-- ========== MENSAJE PARA STAFF ========== -->
+    <section class="card" style="text-align: center; padding: 60px 20px;">
+      <div style="font-size: 64px; margin-bottom: 20px;">
+        <?= $rol === 'medico' ? '👨‍⚕️' : '👩‍💼' ?>
+      </div>
+      <h2>Bienvenido/a, <?= htmlspecialchars($rol) ?></h2>
+      <p style="color: var(--muted); margin: 20px 0; font-size: 16px;">
+        Para acceder a tus funciones, dirígete al panel administrativo.
+      </p>
+      <a href="admin.php" class="btn primary" style="display: inline-block; padding: 16px 32px; font-size: 17px; margin-top: 16px;">
+        📊 Ir al Panel Administrativo
+      </a>
+    </section>
+    
     <?php else: ?>
-    <!-- SISTEMA DE TURNOS PARA PACIENTES LOGUEADOS -->
+    <!-- ========== SISTEMA DE TURNOS PARA PACIENTES ========== -->
     <div class="layout">
-      <!-- Columna izquierda: Reserva -->
       <section class="card">
         <h2>📅 Reservar turno</h2>
 
@@ -403,12 +146,11 @@ $api_base_url = controller('turnos_api.php');
           </div>
         </div>
 
-        <!-- Calendario mejorado -->
         <div class="cal-wrap">
           <div class="cal-header">
-            <button id="calPrev" class="btn ghost" aria-label="Mes anterior" style="padding: 8px 12px;">‹</button>
+            <button id="calPrev" class="btn ghost" style="padding: 8px 12px;">‹</button>
             <div id="calTitle" class="cal-title">Mes Año</div>
-            <button id="calNext" class="btn ghost" aria-label="Mes siguiente" style="padding: 8px 12px;">›</button>
+            <button id="calNext" class="btn ghost" style="padding: 8px 12px;">›</button>
           </div>
           <div class="cal-grid cal-week">
             <div style="color: var(--primary); font-weight: 700;">Lun</div>
@@ -436,7 +178,6 @@ $api_base_url = controller('turnos_api.php');
         </div>
       </section>
 
-      <!-- Columna derecha: Mis turnos -->
       <section class="card side">
         <h3>📋 Mis próximos turnos</h3>
         <div class="table-wrap">
@@ -472,62 +213,10 @@ $api_base_url = controller('turnos_api.php');
     </div>
   </footer>
 
-  <?php if ($logueado): ?>
-  <!-- ✅ IMPORTANTE: Cargar el JS DESPUÉS de definir API_BASE_URL -->
+  <?php if ($logueado && ($rol === 'paciente' || $rol === '')): ?>
+  <!-- Cargar JS solo para pacientes -->
+  <script src="<?= asset('js/turnos_utils.js') ?>"></script>
   <script src="<?= asset('js/index.js') ?>"></script>
-  <script>
-    // ✅ Verificación adicional de conectividad
-    (function() {
-      const statusIndicator = document.getElementById('connectionStatus');
-      
-      function showStatus(message, isError = false) {
-        if (!statusIndicator) return;
-        statusIndicator.textContent = message;
-        statusIndicator.className = 'connection-status ' + (isError ? 'error' : 'success');
-        
-        if (!isError) {
-          setTimeout(() => {
-            statusIndicator.style.display = 'none';
-          }, 3000);
-        }
-      }
-
-      // Verificar conectividad al cargar
-      async function checkConnection() {
-        try {
-          console.log('🔍 Verificando conectividad con:', window.API_BASE_URL);
-          const response = await fetch(window.API_BASE_URL + '?action=specialties', {
-            method: 'GET',
-            headers: { 'Accept': 'application/json' }
-          });
-          
-          if (response.ok) {
-            console.log('✅ Conexión exitosa');
-            showStatus('✅ Conectado', false);
-          } else {
-            throw new Error(`HTTP ${response.status}`);
-          }
-        } catch (error) {
-          console.error('❌ Error de conexión:', error);
-          showStatus('❌ Error de conexión - Verifica la configuración', true);
-        }
-      }
-
-      // Verificar al cargar la página
-      setTimeout(checkConnection, 1000);
-
-      // Helper para formato 12h
-      window.formatHour12 = function(time24) {
-        if (!time24) return '';
-        const parts = time24.split(':');
-        let h = parseInt(parts[0]);
-        const m = parts[1];
-        const ampm = h >= 12 ? 'PM' : 'AM';
-        h = h % 12 || 12;
-        return `${h}:${m} ${ampm}`;
-      };
-    })();
-  </script>
   <?php endif; ?>
 </body>
 </html>
