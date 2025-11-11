@@ -1,7 +1,7 @@
 <?php
 /**
- * login.php - VERSIÓN CORREGIDA Y OPTIMIZADA
- * Sincronizado con register.php y BD
+ * login.php - VERSIÓN CORREGIDA (Validaciones arregladas)
+ * Sincronizado con register.php
  */
 ini_set('session.cookie_httponly', 1);
 ini_set('session.cookie_secure', 1);
@@ -24,10 +24,6 @@ if (!empty($_SESSION['Id_usuario'])) {
     exit;
 }
 
-// Configuración de seguridad
-$max_attempts = 5;
-$lockout_time = 900; // 15 minutos
-
 // ========== FUNCIONES DE SEGURIDAD ==========
 
 function recordFailedAttempt($pdo, $userId) {
@@ -40,7 +36,6 @@ function recordFailedAttempt($pdo, $userId) {
         ");
         $stmt->execute([$userId]);
         
-        // Verificar si debe bloquearse
         $stmt = $pdo->prepare("SELECT failed_login_attempts FROM usuario WHERE Id_usuario = ?");
         $stmt->execute([$userId]);
         $attempts = $stmt->fetchColumn();
@@ -107,7 +102,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $dni = sanitizeInput($_POST['dni'] ?? '');
     $password = $_POST['password'] ?? ''; // NO sanitizar la contraseña
     
-    // Validaciones básicas
+    // ✅ CORRECCIÓN: Validaciones básicas simplificadas
     if (empty($dni)) {
         $error = 'El DNI es obligatorio';
     } elseif (empty($password)) {
@@ -118,152 +113,149 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($dniError) {
             $error = $dniError;
             sleep(2);
+        } 
+        // ✅ CORRECCIÓN: Solo validar longitud mínima real (sin máximo estricto aquí)
+        elseif (strlen($password) < 1 || strlen($password) > 255) {
+            // Rango amplio para no rechazar contraseñas válidas
+            $error = 'Contraseña inválida';
+            sleep(2);
         } else {
-            // Validaciones de contraseña
-            if (strlen($password) < 6 || strlen($password) > 128) {
-                $error = 'Contraseña inválida';
-                sleep(2);
-            } else {
-                try {
-                    // ✅ QUERY MEJORADO: Incluye verificación de bloqueo
-                    $stmt = $pdo->prepare("
-                        SELECT 
-                            u.Id_usuario, 
-                            u.nombre, 
-                            u.apellido, 
-                            u.dni, 
-                            u.email, 
-                            u.rol, 
-                            u.password,
-                            u.failed_login_attempts,
-                            u.account_locked_until,
-                            CASE 
-                                WHEN m.Id_medico IS NOT NULL AND m.Activo = 1 THEN 1
-                                ELSE 0
-                            END AS is_medico_activo,
-                            CASE 
-                                WHEN s.Id_secretaria IS NOT NULL AND s.Activo = 1 THEN 1
-                                ELSE 0
-                            END AS is_secretaria_activa,
-                            CASE 
-                                WHEN p.Id_paciente IS NOT NULL AND p.Activo = 1 THEN 1
-                                ELSE 0
-                            END AS is_paciente_activo
-                        FROM usuario u
-                        LEFT JOIN medico m ON m.Id_usuario = u.Id_usuario
-                        LEFT JOIN secretaria s ON s.Id_usuario = u.Id_usuario
-                        LEFT JOIN paciente p ON p.Id_usuario = u.Id_usuario
-                        WHERE u.dni = ? 
-                        LIMIT 1
-                    ");
-                    $stmt->execute([$dni]);
-                    $user = $stmt->fetch(PDO::FETCH_ASSOC);
+            try {
+                $stmt = $pdo->prepare("
+                    SELECT 
+                        u.Id_usuario, 
+                        u.nombre, 
+                        u.apellido, 
+                        u.dni, 
+                        u.email, 
+                        u.rol, 
+                        u.Contraseña as password,
+                        u.failed_login_attempts,
+                        u.account_locked_until,
+                        CASE 
+                            WHEN m.Id_medico IS NOT NULL AND m.Activo = 1 THEN 1
+                            ELSE 0
+                        END AS is_medico_activo,
+                        CASE 
+                            WHEN s.Id_secretaria IS NOT NULL AND s.Activo = 1 THEN 1
+                            ELSE 0
+                        END AS is_secretaria_activa,
+                        CASE 
+                            WHEN p.Id_paciente IS NOT NULL AND p.Activo = 1 THEN 1
+                            ELSE 0
+                        END AS is_paciente_activo
+                    FROM usuario u
+                    LEFT JOIN medico m ON m.Id_usuario = u.Id_usuario
+                    LEFT JOIN secretaria s ON s.Id_usuario = u.Id_usuario
+                    LEFT JOIN paciente p ON p.Id_usuario = u.Id_usuario
+                    WHERE u.dni = ? 
+                    LIMIT 1
+                ");
+                $stmt->execute([$dni]);
+                $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
-                    if ($user) {
-                        $userId = (int)$user['Id_usuario'];
+                if ($user) {
+                    $userId = (int)$user['Id_usuario'];
+                    
+                    // Verificar bloqueo
+                    if (isAccountLocked($user)) {
+                        $remainingMinutes = ceil((strtotime($user['account_locked_until']) - time()) / 60);
+                        $error = "Cuenta bloqueada temporalmente. Intenta nuevamente en {$remainingMinutes} minuto(s).";
+                        error_log("Locked account login attempt: User $userId from IP $ip");
+                        sleep(2);
+                    }
+                    // ✅ CORRECCIÓN: Verificar que exista un hash válido
+                    elseif (empty($user['password']) || strlen($user['password']) < 10) {
+                        error_log("Invalid or missing password hash for user $userId");
+                        $error = 'Error en la cuenta. Contacta al administrador.';
+                    }
+                    // ✅ Verificar contraseña con password_verify
+                    elseif (password_verify($password, $user['password'])) {
+                        // Verificar que el usuario tenga rol activo
+                        $hasActiveRole = false;
+                        $actualRole = '';
                         
-                        // ✅ Verificar bloqueo de cuenta
-                        if (isAccountLocked($user)) {
-                            $remainingMinutes = ceil((strtotime($user['account_locked_until']) - time()) / 60);
-                            $error = "Cuenta bloqueada temporalmente. Intenta nuevamente en {$remainingMinutes} minuto(s).";
-                            error_log("Locked account login attempt: User $userId from IP $ip");
+                        if ($user['rol'] === 'medico' && $user['is_medico_activo']) {
+                            $hasActiveRole = true;
+                            $actualRole = 'medico';
+                        } elseif ($user['rol'] === 'secretaria' && $user['is_secretaria_activa']) {
+                            $hasActiveRole = true;
+                            $actualRole = 'secretaria';
+                        } elseif ($user['rol'] === 'paciente' && $user['is_paciente_activo']) {
+                            $hasActiveRole = true;
+                            $actualRole = 'paciente';
+                        } elseif ($user['rol'] === '' && $user['is_paciente_activo']) {
+                            // Usuario sin rol pero con paciente activo
+                            $hasActiveRole = true;
+                            $actualRole = 'paciente';
+                        }
+                        
+                        if (!$hasActiveRole) {
+                            $error = 'Usuario inactivo o sin rol asignado. Contacta al administrador.';
+                            error_log("Inactive user login attempt: User $userId, Rol: {$user['rol']}");
                             sleep(2);
-                        }
-                        // ✅ Verificar que el hash sea válido
-                        elseif (strlen($user['password']) < 60) {
-                            error_log("Invalid hash format for user $userId");
-                            $error = 'Error en la cuenta. Contacta al administrador.';
-                        }
-                        // ✅ Verificar contraseña
-                        elseif (password_verify($password, $user['password'])) {
-                            // ✅ Verificar que el usuario tenga rol activo
-                            $hasActiveRole = false;
-                            $actualRole = '';
-                            
-                            if ($user['rol'] === 'medico' && $user['is_medico_activo']) {
-                                $hasActiveRole = true;
-                                $actualRole = 'medico';
-                            } elseif ($user['rol'] === 'secretaria' && $user['is_secretaria_activa']) {
-                                $hasActiveRole = true;
-                                $actualRole = 'secretaria';
-                            } elseif ($user['rol'] === 'paciente' && $user['is_paciente_activo']) {
-                                $hasActiveRole = true;
-                                $actualRole = 'paciente';
-                            } elseif ($user['rol'] === '') {
-                                // Usuario sin rol específico pero con registro de paciente activo
-                                if ($user['is_paciente_activo']) {
-                                    $hasActiveRole = true;
-                                    $actualRole = 'paciente';
-                                }
-                            }
-                            
-                            if (!$hasActiveRole) {
-                                $error = 'Usuario inactivo o sin rol asignado. Contacta al administrador.';
-                                error_log("Inactive user login attempt: User $userId, Rol: {$user['rol']}");
-                                sleep(2);
-                            } else {
-                                // ✅ LOGIN EXITOSO
-                                
-                                // Resetear intentos fallidos
-                                resetFailedAttempts($pdo, $userId);
-                                
-                                // Regenerar ID de sesión
-                                session_regenerate_id(true);
-                                
-                                // Guardar datos en sesión
-                                $_SESSION['Id_usuario'] = $userId;
-                                $_SESSION['dni'] = $user['dni'];
-                                $_SESSION['email'] = $user['email'];
-                                $_SESSION['Nombre'] = $user['nombre'];
-                                $_SESSION['Apellido'] = $user['apellido'];
-                                $_SESSION['Rol'] = $actualRole;
-                                $_SESSION['login_time'] = time();
-                                $_SESSION['ip_address'] = $ip;
-
-                                // Actualizar último acceso
-                                $updateStmt = $pdo->prepare("
-                                    UPDATE usuario 
-                                    SET ultimo_acceso = NOW() 
-                                    WHERE Id_usuario = ?
-                                ");
-                                $updateStmt->execute([$userId]);
-
-                                // Log exitoso
-                                error_log("Successful login: User $userId ($actualRole) from IP $ip");
-
-                                // Redirigir según el rol
-                                if ($actualRole === 'medico' || $actualRole === 'secretaria') {
-                                    header('Location: admin.php');
-                                } else {
-                                    header('Location: index.php');
-                                }
-                                exit;
-                            }
                         } else {
-                            // Contraseña incorrecta
-                            recordFailedAttempt($pdo, $userId);
+                            // ✅ LOGIN EXITOSO
                             
-                            $remainingAttempts = 5 - ($user['failed_login_attempts'] + 1);
-                            if ($remainingAttempts > 0) {
-                                $error = "DNI o contraseña incorrectos. Te quedan {$remainingAttempts} intento(s).";
+                            // Resetear intentos fallidos
+                            resetFailedAttempts($pdo, $userId);
+                            
+                            // Regenerar ID de sesión
+                            session_regenerate_id(true);
+                            
+                            // Guardar datos en sesión
+                            $_SESSION['Id_usuario'] = $userId;
+                            $_SESSION['dni'] = $user['dni'];
+                            $_SESSION['email'] = $user['email'];
+                            $_SESSION['Nombre'] = $user['nombre'];
+                            $_SESSION['Apellido'] = $user['apellido'];
+                            $_SESSION['Rol'] = $actualRole;
+                            $_SESSION['login_time'] = time();
+                            $_SESSION['ip_address'] = $ip;
+
+                            // Actualizar último acceso
+                            $updateStmt = $pdo->prepare("
+                                UPDATE usuario 
+                                SET ultimo_acceso = NOW() 
+                                WHERE Id_usuario = ?
+                            ");
+                            $updateStmt->execute([$userId]);
+
+                            // Log exitoso
+                            error_log("Successful login: User $userId ($actualRole) from IP $ip");
+
+                            // Redirigir según el rol
+                            if ($actualRole === 'medico' || $actualRole === 'secretaria') {
+                                header('Location: admin.php');
                             } else {
-                                $error = "DNI o contraseña incorrectos. Tu cuenta ha sido bloqueada por 15 minutos.";
+                                header('Location: index.php');
                             }
-                            
-                            error_log("Password mismatch for user $userId from IP $ip");
-                            sleep(rand(2, 4));
+                            exit;
                         }
                     } else {
-                        // Usuario no encontrado
-                        $error = 'DNI o contraseña incorrectos';
-                        error_log("Login attempt for non-existent DNI: $dni from IP $ip");
+                        // Contraseña incorrecta
+                        recordFailedAttempt($pdo, $userId);
+                        
+                        $remainingAttempts = 5 - ($user['failed_login_attempts'] + 1);
+                        if ($remainingAttempts > 0) {
+                            $error = "DNI o contraseña incorrectos. Te quedan {$remainingAttempts} intento(s).";
+                        } else {
+                            $error = "DNI o contraseña incorrectos. Tu cuenta ha sido bloqueada por 15 minutos.";
+                        }
+                        
+                        error_log("Password mismatch for user $userId from IP $ip");
                         sleep(rand(2, 4));
                     }
-                } catch (Throwable $e) {
-                    error_log('Login error: ' . $e->getMessage());
-                    $error = 'Error al procesar el inicio de sesión. Intenta nuevamente.';
-                    sleep(2);
+                } else {
+                    // Usuario no encontrado
+                    $error = 'DNI o contraseña incorrectos';
+                    error_log("Login attempt for non-existent DNI: $dni from IP $ip");
+                    sleep(rand(2, 4));
                 }
+            } catch (Throwable $e) {
+                error_log('Login error: ' . $e->getMessage());
+                $error = 'Error al procesar el inicio de sesión. Intenta nuevamente.';
+                sleep(2);
             }
         }
     }
@@ -275,15 +267,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta charset="utf-8">
     <title>Iniciar sesión - Turnos Médicos</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta http-equiv="X-UA-Compatible" content="IE=edge">
-    <meta name="robots" content="noindex, nofollow">
     <style>
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-        }
-
+        * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
             font-family: system-ui, -apple-system, Arial, sans-serif;
             background: linear-gradient(135deg, #0b1220 0%, #1a2332 100%);
@@ -294,12 +279,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             justify-content: center;
             padding: 20px;
         }
-
-        .container {
-            max-width: 420px;
-            width: 100%;
-        }
-
+        .container { max-width: 420px; width: 100%; }
         .card {
             background: #111827;
             border: 1px solid #1f2937;
@@ -307,31 +287,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             padding: 32px;
             box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
         }
-
-        .logo {
-            text-align: center;
-            margin-bottom: 24px;
-        }
-
-        .logo-icon {
-            font-size: 48px;
-            margin-bottom: 8px;
-        }
-
+        .logo { text-align: center; margin-bottom: 24px; }
+        .logo-icon { font-size: 48px; margin-bottom: 8px; }
         h1 {
             color: #22d3ee;
             margin-bottom: 8px;
             font-size: 28px;
             text-align: center;
         }
-
         .subtitle {
             color: #94a3b8;
             margin-bottom: 24px;
             font-size: 14px;
             text-align: center;
         }
-
         .error {
             background: rgba(239, 68, 68, 0.1);
             border: 1px solid #ef4444;
@@ -343,21 +312,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             text-align: center;
             animation: shake 0.5s;
         }
-
         @keyframes shake {
             0%, 100% { transform: translateX(0); }
             10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
             20%, 40%, 60%, 80% { transform: translateX(5px); }
         }
-
-        .error:before {
-            content: "⚠️ ";
-        }
-
-        .field {
-            margin-bottom: 16px;
-        }
-
+        .error:before { content: "⚠️ "; }
+        .field { margin-bottom: 16px; }
         label {
             display: block;
             color: #94a3b8;
@@ -365,7 +326,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             font-weight: 500;
             margin-bottom: 6px;
         }
-
         input {
             width: 100%;
             padding: 12px;
@@ -376,17 +336,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             font-size: 15px;
             transition: all 0.2s;
         }
-
         input:focus {
             outline: none;
             border-color: #22d3ee;
             box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.1);
         }
-
-        input::placeholder {
-            color: #6b7280;
-        }
-
+        input::placeholder { color: #6b7280; }
         .btn {
             width: 100%;
             padding: 14px;
@@ -400,47 +355,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             transition: all 0.2s;
             margin-top: 8px;
         }
-
         .btn:hover:not(:disabled) {
             background: #0891b2;
             transform: translateY(-1px);
             box-shadow: 0 4px 12px rgba(34, 211, 238, 0.3);
         }
-
-        .btn:active {
-            transform: translateY(0);
-        }
-
-        .btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
         .footer {
             text-align: center;
             margin-top: 20px;
             padding-top: 20px;
             border-top: 1px solid #1f2937;
         }
-
         .footer a {
             color: #22d3ee;
             text-decoration: none;
             font-weight: 500;
         }
-
-        .footer a:hover {
-            text-decoration: underline;
-        }
-
+        .footer a:hover { text-decoration: underline; }
         @media (max-width: 600px) {
-            .card {
-                padding: 24px;
-            }
-
-            h1 {
-                font-size: 24px;
-            }
+            .card { padding: 24px; }
+            h1 { font-size: 24px; }
         }
     </style>
 </head>
@@ -484,7 +419,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         name="password" 
                         placeholder="Ingresá tu contraseña"
                         autocomplete="current-password"
-                        maxlength="128"
                         required
                     >
                 </div>
@@ -499,6 +433,56 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </div>
     </div>
 
-    <script src="../assets/js/login.js"></script>
+    <script>
+        // ✅ VALIDACIÓN JS SIMPLIFICADA - Sin restricciones excesivas
+        (function() {
+            'use strict';
+
+            const form = document.getElementById('loginForm');
+            const dniInput = document.getElementById('dni');
+            const passwordInput = document.getElementById('password');
+
+            // Solo números en DNI
+            dniInput?.addEventListener('input', function(e) {
+                this.value = this.value.replace(/[^0-9]/g, '');
+            });
+
+            // Validación básica del formulario
+            form?.addEventListener('submit', function(e) {
+                const dni = dniInput.value.trim();
+                const password = passwordInput.value;
+
+                if (!dni) {
+                    e.preventDefault();
+                    alert('⚠️ Por favor, ingresá tu DNI');
+                    dniInput.focus();
+                    return false;
+                }
+
+                if (dni.length < 7 || dni.length > 10) {
+                    e.preventDefault();
+                    alert('⚠️ El DNI debe tener entre 7 y 10 dígitos');
+                    dniInput.focus();
+                    return false;
+                }
+
+                if (!password) {
+                    e.preventDefault();
+                    alert('⚠️ Por favor, ingresá tu contraseña');
+                    passwordInput.focus();
+                    return false;
+                }
+
+                // ✅ No validar longitud aquí - dejar que el servidor lo maneje
+                
+                // Deshabilitar botón para evitar doble envío
+                const submitBtn = form.querySelector('button[type="submit"]');
+                if (submitBtn) {
+                    submitBtn.disabled = true;
+                    submitBtn.textContent = 'Iniciando sesión...';
+                }
+            });
+        })();
+    </script>
 </body>
 </html>
