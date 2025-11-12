@@ -539,3 +539,59 @@ tbody tr:hover{
   0%{background-position:-1000px 0}
   100%{background-position:1000px 0}
 }
+.horario-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px;
+  background: #1a2332;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 8px;
+}
+.horario-info {
+  flex: 1;
+}
+.btn-remove-horario {
+  padding: 6px 12px;
+  background: #ef4444;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+.btn-remove-horario:hover {
+  background: #dc2626;
+}
+.paciente-item {
+  padding: 10px;
+  background: #0b1220;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.paciente-item:hover {
+  background: #1a2332;
+  border-color: var(--primary);
+}
+.paciente-item.selected {
+  background: var(--primary);
+  color: #001219;
+  border-color: var(--primary);
+}
+.tab {
+  transition: all 0.3s;
+}
+.tab:hover {
+  background: rgba(34,211,238,0.1);
+  border-color: var(--primary);
+}
+.tab.active {
+  background: var(--primary);
+  color: #001219;
+  border-color: var(--primary);
+}

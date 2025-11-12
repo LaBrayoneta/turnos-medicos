@@ -662,11 +662,18 @@ $rolTexto = $isSec ? 'Secretaría' : 'Médico';
   <script src="../assets/js/turnos_utils.js"></script>
 </head>
 <body>
+
 <header class="hdr">
   <div class="brand">🏥 Panel Administrativo</div>
   <div class="who">👤 <?= htmlspecialchars($apellido.', '.$nombre) ?> — <?= $rolTexto ?></div>
   <nav class="actions">
-    <a class="btn ghost" href="admin.php">🏠 Inicio</a>
+    <?php if ($isMed): ?>
+      <!-- Botón para que el médico acceda a su panel -->
+      <a class="btn primary" href="medico_panel.php" style="display:inline-flex;align-items:center;gap:6px">
+        👨‍⚕️ Mi Panel Médico
+      </a>
+    <?php endif; ?>
+    <a class="btn ghost" href="index.php">🏠 Inicio</a>
     <form class="inline" action="../../controllers/logout.php" method="post" style="display:inline;margin:0">
       <button class="btn ghost" type="submit">🚪 Salir</button>
     </form>

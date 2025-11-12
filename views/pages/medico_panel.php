@@ -1,5 +1,5 @@
 <?php
-// views/pages/medico_panel.php - PANEL MÉDICO COMPLETO Y CORREGIDO
+// views/pages/medico_panel.php - PANEL MÉDICO CORREGIDO
 session_start();
 require_once __DIR__ . '/../../config/db.php';
 
@@ -15,7 +15,7 @@ $userId = (int)$_SESSION['Id_usuario'];
 $nombre = $_SESSION['Nombre'] ?? '';
 $apellido = $_SESSION['Apellido'] ?? '';
 
-// Obtener ID del médico
+// ✅ CORRECCIÓN: Obtener ID del médico sin campo Contraseña
 $stmt = $pdo->prepare("SELECT Id_medico, Id_Especialidad FROM medico WHERE Id_usuario = ? AND Activo = 1 LIMIT 1");
 $stmt->execute([$userId]);
 $medico = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -52,6 +52,7 @@ $especialidad = $stmt->fetchColumn() ?: 'Sin especialidad';
         <div class="who">Dr. <?= htmlspecialchars($apellido . ', ' . $nombre) ?> - <?= htmlspecialchars($especialidad) ?></div>
         <nav class="actions">
             <a class="btn ghost" href="admin.php">📊 Panel Admin</a>
+            <a class="btn ghost" href="index.php">🏠 Inicio</a>
             <form class="inline" action="../../controllers/logout.php" method="post">
                 <button class="btn ghost" type="submit">🚪 Salir</button>
             </form>

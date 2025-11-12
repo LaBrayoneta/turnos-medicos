@@ -951,5 +951,4 @@
     await loadInit();
     console.log('✅ Panel listo');
   })();
-
 })();

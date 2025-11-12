@@ -47,29 +47,34 @@ $api_base_url = controller('turnos_api.php');
   <link rel="stylesheet" href="<?= asset('css/index.css') ?>">
 </head>
 <body>
-  <header class="hdr">
-    <div class="brand">🏥 Clínica Médica</div>
-    <div class="actions">
-      <?php if ($logueado): ?>
-        <span style="color:var(--muted)">
-          👋 Hola, <strong style="color:var(--primary)"><?= htmlspecialchars($nombre . ' ' . $apellido) ?></strong>
-        </span>
-        
-        <?php if ($rol === 'medico' || $rol === 'secretaria'): ?>
-          <!-- Mostrar enlace al panel admin en lugar de redirigir -->
-          <a class="btn primary" href="admin.php">📊 Ir al Panel Admin</a>
-        <?php endif; ?>
-        
-        <form class="inline" action="<?= controller('logout.php') ?>" method="post" style="display:inline;margin:0">
-          <button type="submit" class="btn ghost">🚪 Cerrar sesión</button>
-        </form>
-      <?php else: ?>
-        <a class="btn primary" href="login.php">Iniciar sesión</a>
-        <a class="btn ghost" href="register.php">Crear cuenta</a>
-      <?php endif; ?>
-    </div>
-  </header>
+  <!-- Reemplazar el header en index.php con esto: -->
 
+<header class="hdr">
+  <div class="brand">🏥 Clinica Vida Plena</div>
+  <div class="actions">
+    <?php if ($logueado): ?>
+      <span style="color:var(--muted)">
+        👋 Hola, <strong style="color:var(--primary)"><?= htmlspecialchars($nombre . ' ' . $apellido) ?></strong>
+      </span>
+      
+      <?php if ($rol === 'medico'): ?>
+        <!-- Médico: puede acceder a ambos paneles -->
+        <a class="btn primary" href="medico_panel.php">👨‍⚕️ Mi Panel Médico</a>
+        <a class="btn ghost" href="admin.php">📊 Panel Admin</a>
+      <?php elseif ($rol === 'secretaria'): ?>
+        <!-- Secretaria: solo panel admin -->
+        <a class="btn primary" href="admin.php">📊 Panel Admin</a>
+      <?php endif; ?>
+      
+      <form class="inline" action="<?= controller('logout.php') ?>" method="post" style="display:inline;margin:0">
+        <button type="submit" class="btn ghost">🚪 Cerrar sesión</button>
+      </form>
+    <?php else: ?>
+      <a class="btn primary" href="login.php">Iniciar sesión</a>
+      <a class="btn ghost" href="register.php">Crear cuenta</a>
+    <?php endif; ?>
+  </div>
+</header>
   <main class="wrap">
     <?php if (!$logueado): ?>
     <!-- ========== PORTADA PARA NO LOGUEADOS ========== -->
