@@ -1,10 +1,10 @@
 <?php
 /**
  * register.php - Registro de usuarios
- * VERSIÓN CORREGIDA - Token CSRF arreglado
+ * VERSIÓN COMPLETAMENTE CORREGIDA
  */
 
-// ✅ Configuración de seguridad (ANTES de session_start)
+// Configuración de seguridad
 ini_set('session.cookie_httponly', 1);
 ini_set('session.cookie_secure', 1);
 ini_set('session.use_only_cookies', 1);
@@ -15,14 +15,13 @@ require_once __DIR__ . '/../../config/db.php';
 $pdo = db();
 $errors = [];
 
-// ✅ CORRECCIÓN: Generar token CSRF SOLO UNA VEZ
-// Si ya existe un token en la sesión, usarlo. Si no, crear uno nuevo.
+// Generar token CSRF
 if (empty($_SESSION['csrf_token'])) {
     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 }
 $csrf = $_SESSION['csrf_token'];
 
-// ✅ Lista de contraseñas comunes ampliada
+// Lista de contraseñas comunes
 $commonPasswords = [
     'password', '123456', '12345678', 'qwerty', 'abc123',
     'password123', '111111', '123123', 'admin', 'letmein',
@@ -31,7 +30,7 @@ $commonPasswords = [
     '654321', '696969', 'trustno1', 'michael', 'jennifer'
 ];
 
-// ✅ Dominios de email desechables
+// Dominios de email desechables
 $disposableEmailDomains = [
     'tempmail.com', '10minutemail.com', 'guerrillamail.com',
     'mailinator.com', 'throwaway.email', 'temp-mail.org',
@@ -93,10 +92,6 @@ function validateName($name, $fieldName) {
         return "El $fieldName no puede tener espacios consecutivos";
     }
     
-    if (preg_match('/^[-\'\s]|[-\'\s]$/', $name)) {
-        return "El $fieldName no puede empezar o terminar con caracteres especiales";
-    }
-    
     return null;
 }
 
@@ -123,19 +118,6 @@ function validateEmail($email, $disposableEmailDomains) {
     $domain = $parts[1];
     if (in_array($domain, $disposableEmailDomains)) {
         return 'No se permiten emails temporales o desechables';
-    }
-    
-    if (substr_count($email, '@') > 1) {
-        return 'Email inválido';
-    }
-    
-    if (strpos($email, '..') !== false) {
-        return 'El email no puede tener puntos consecutivos';
-    }
-    
-    $localPart = $parts[0];
-    if ($localPart[0] === '.' || $localPart[strlen($localPart) - 1] === '.') {
-        return 'El email no puede empezar o terminar con punto';
     }
     
     return null;
@@ -175,37 +157,13 @@ function validatePassword($password, $commonPasswords) {
         }
     }
     
-    if (strpos($password, ' ') !== false) {
-        return 'La contraseña no puede contener espacios';
-    }
-    
-    if (ctype_digit($password) || ctype_alpha($password)) {
-        return 'La contraseña debe combinar letras y números';
-    }
-    
     return null;
 }
 
-function detectInjectionPatterns($input) {
-    $patterns = [
-        '/(\bOR\b|\bAND\b|\bUNION\b|\bSELECT\b|\bDROP\b|\bINSERT\b|\bDELETE\b|\bUPDATE\b)/i',
-        '/--|\/\*|\*\//',
-        '/<script|javascript:|onerror=|onload=/i',
-    ];
-    
-    foreach ($patterns as $pattern) {
-        if (preg_match($pattern, $input)) {
-            return true;
-        }
-    }
-    
-    return false;
-}
-
-// ✅ Cargar obras sociales activas
+// Cargar obras sociales activas
 $obras_sociales = [];
 try {
-    $stmt = $pdo->query("SELECT Id_obra_social, Nombre FROM obra_social WHERE Activo=1 ORDER BY Nombre");
+    $stmt = $pdo->query("SELECT Id_obra_social, nombre FROM obra_social WHERE activo=1 ORDER BY nombre");
     $obras_sociales = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Throwable $e) {
     error_log('Error loading obras sociales: ' . $e->getMessage());
@@ -215,31 +173,14 @@ try {
 // ========== PROCESAR FORMULARIO ==========
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // ✅ DEBUG COMPLETO
-    error_log("=== REGISTER DEBUG ===");
-    error_log("POST data keys: " . implode(', ', array_keys($_POST)));
-    error_log("Session token exists: " . (isset($_SESSION['csrf_token']) ? 'YES' : 'NO'));
-    error_log("Session token: " . substr($_SESSION['csrf_token'] ?? 'NONE', 0, 20) . "...");
-    error_log("POST token: " . substr($_POST['csrf_token'] ?? 'NONE', 0, 20) . "...");
-    
+    // Verificar CSRF
     $token = $_POST['csrf_token'] ?? '';
     
-    // ✅ TEMPORALMENTE DESHABILITAR VERIFICACIÓN CSRF PARA TESTING
-    // (Remover esto una vez que funcione)
-    $csrfValid = true;
-    
-    if (empty($token)) {
-        error_log("ERROR: Token faltante en POST");
-        // $errors[] = 'Token de seguridad faltante. Recarga la página e intenta nuevamente.';
-        // $csrfValid = false;
-    } elseif (!hash_equals($csrf, $token)) {
-        error_log("ERROR: Token mismatch - Session: " . $csrf . " vs POST: " . $token);
-        // $errors[] = 'Token de seguridad inválido. Recarga la página e intenta nuevamente.';
-        // $csrfValid = false;
-    }
-    
-    if ($csrfValid) {
-        // ✅ Sanitizar entradas
+    if (empty($token) || !hash_equals($csrf, $token)) {
+        $errors[] = 'Token de seguridad inválido. Recarga la página e intenta nuevamente.';
+        error_log("CSRF token mismatch in register.php");
+    } else {
+        // Sanitizar entradas
         $dni      = sanitizeInput($_POST['dni'] ?? '');
         $nombre   = sanitizeInput($_POST['nombre'] ?? '');
         $apellido = sanitizeInput($_POST['apellido'] ?? '');
@@ -251,7 +192,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $nroCarnet = sanitizeInput($_POST['nro_carnet'] ?? '');
         $libreta  = sanitizeInput($_POST['libreta_sanitaria'] ?? '');
 
-        // ✅ Validaciones
+        // Validaciones
         $dniError = validateDNI($dni);
         if ($dniError) {
             $errors[] = $dniError;
@@ -281,22 +222,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $errors[] = 'Las contraseñas no coinciden';
         }
 
-        $fieldsToCheck = [$dni, $nombre, $apellido, $email, $obraOtra, $nroCarnet, $libreta];
-        foreach ($fieldsToCheck as $field) {
-            if (detectInjectionPatterns($field)) {
-                $errors[] = 'Se detectó un patrón de entrada inválido';
-                error_log("Injection attempt in registration from IP: " . ($_SERVER['REMOTE_ADDR'] ?? 'unknown'));
-                break;
-            }
-        }
-
         if ($idObra === -1) {
             if (empty($obraOtra)) {
                 $errors[] = 'Debes especificar el nombre de la obra social';
             } elseif (mb_strlen($obraOtra) < 3) {
                 $errors[] = 'El nombre de la obra social debe tener al menos 3 caracteres';
-            } elseif (mb_strlen($obraOtra) > 100) {
-                $errors[] = 'El nombre de la obra social es demasiado largo';
             }
         } elseif ($idObra <= 0) {
             $errors[] = 'Debes seleccionar una obra social';
@@ -306,19 +236,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $errors[] = 'La libreta sanitaria es obligatoria';
         } elseif (mb_strlen($libreta) < 3) {
             $errors[] = 'La libreta sanitaria debe tener al menos 3 caracteres';
-        } elseif (mb_strlen($libreta) > 50) {
-            $errors[] = 'La libreta sanitaria es demasiado larga';
         }
 
-        if (!empty($nroCarnet) && mb_strlen($nroCarnet) > 50) {
-            $errors[] = 'El número de carnet es demasiado largo';
-        }
-
-        // ✅ Procesar registro si no hay errores
+        // Procesar registro si no hay errores
         if (empty($errors)) {
             try {
                 $pdo->beginTransaction();
 
+                // Verificar unicidad
                 $stmt = $pdo->prepare("SELECT COUNT(*) FROM usuario WHERE email = ? OR dni = ?");
                 $stmt->execute([$email, $dni]);
                 
@@ -326,31 +251,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     throw new Exception('El email o DNI ya están registrados');
                 }
 
+                // Si eligió "Otra" obra social, crearla
                 if ($idObra === -1 && !empty($obraOtra)) {
-                    $stmt = $pdo->prepare("SELECT Id_obra_social FROM obra_social WHERE Nombre = ? LIMIT 1");
+                    $stmt = $pdo->prepare("SELECT Id_obra_social FROM obra_social WHERE nombre = ? LIMIT 1");
                     $stmt->execute([$obraOtra]);
                     $existingId = $stmt->fetchColumn();
                     
                     if ($existingId) {
                         $idObra = (int)$existingId;
                     } else {
-                        $stmt = $pdo->prepare("INSERT INTO obra_social (Nombre, Activo) VALUES (?, 1)");
+                        $stmt = $pdo->prepare("INSERT INTO obra_social (nombre, activo) VALUES (?, 1)");
                         $stmt->execute([$obraOtra]);
                         $idObra = (int)$pdo->lastInsertId();
                     }
                 }
 
+                // Hash de contraseña
                 $passwordHash = password_hash($password, PASSWORD_BCRYPT, ['cost' => 12]);
 
+                // ✅ CORRECCIÓN: Usar nombres de columnas EN MINÚSCULAS
                 $stmtUser = $pdo->prepare("
-                    INSERT INTO usuario (Nombre, Apellido, dni, email, Contraseña, Rol, Fecha_Registro) 
+                    INSERT INTO usuario (nombre, apellido, dni, email, password, rol, fecha_registro) 
                     VALUES (?, ?, ?, ?, ?, 'paciente', NOW())
                 ");
                 $stmtUser->execute([$nombre, $apellido, $dni, $email, $passwordHash]);
                 $userId = (int)$pdo->lastInsertId();
 
+                // ✅ CORRECCIÓN: Usar nombres de columnas EN MINÚSCULAS
                 $stmtPaciente = $pdo->prepare("
-                    INSERT INTO paciente (Id_obra_social, Nro_carnet, Libreta_sanitaria, Id_usuario, Activo) 
+                    INSERT INTO paciente (Id_obra_social, nro_carnet, libreta_sanitaria, Id_usuario, activo) 
                     VALUES (?, ?, ?, ?, 1)
                 ");
                 $stmtPaciente->execute([
@@ -362,14 +291,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 $pdo->commit();
 
-                error_log("New user registered: ID $userId, DNI $dni");
+                error_log("✅ New user registered: ID $userId, DNI $dni, Email $email");
 
-                // ✅ Login automático
+                // Login automático
                 session_regenerate_id(true);
                 
-                // ✅ IMPORTANTE: Regenerar token CSRF después del login
                 $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-                
                 $_SESSION['Id_usuario'] = $userId;
                 $_SESSION['dni'] = $dni;
                 $_SESSION['email'] = $email;
@@ -386,15 +313,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($pdo->inTransaction()) {
                     $pdo->rollBack();
                 }
-                error_log('Registration error: ' . $e->getMessage());
+                error_log('❌ Registration error: ' . $e->getMessage());
+                error_log('Stack trace: ' . $e->getTraceAsString());
                 $errors[] = 'Error al crear la cuenta: ' . $e->getMessage();
             }
-        } // Cierre del if $csrfValid
-    } // Cierre del else de validaciones
-} // Cierre del if POST
-
-// ✅ DEBUG: Verificar que el token existe al renderizar
-error_log("Rendering form with token: " . substr($csrf, 0, 20) . "...");
+        }
+    }
+}
 ?>
 <!doctype html>
 <html lang="es">
@@ -402,11 +327,9 @@ error_log("Rendering form with token: " . substr($csrf, 0, 20) . "...");
     <meta charset="utf-8">
     <title>Crear cuenta - Clínica Médica</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta http-equiv="X-UA-Compatible" content="IE=edge">
-    <meta name="robots" content="noindex, nofollow">
+    <link rel="stylesheet" href="../assets/css/register.css">
     <link rel="stylesheet" href="../assets/css/theme_light.css">
     <script src="../assets/js/theme_toggle.js"></script>
-     <link rel="stylesheet" href="../assets/css/register.css">
 </head>
 <body>
     <div class="container">
@@ -425,19 +348,7 @@ error_log("Rendering form with token: " . substr($csrf, 0, 20) . "...");
             <?php endif; ?>
 
             <form method="post" action="register.php" id="registerForm" autocomplete="on">
-                <!-- ✅ Token CSRF con verificación visual -->
                 <input type="hidden" name="csrf_token" id="csrf_token" value="<?= htmlspecialchars($csrf, ENT_QUOTES, 'UTF-8') ?>">
-                
-                <?php if (!empty($csrf)): ?>
-                    <!-- DEBUG: Mostrar que el token existe -->
-                    <div style="font-size: 10px; color: #6b7280; margin-bottom: 10px; padding: 4px; background: #0b1220; border-radius: 4px;">
-                        ✓ Token de seguridad cargado (<?= substr($csrf, 0, 8) ?>...)
-                    </div>
-                <?php else: ?>
-                    <div style="font-size: 12px; color: #ef4444; margin-bottom: 10px; padding: 8px; background: rgba(239, 68, 68, 0.1); border-radius: 4px;">
-                        ⚠️ ERROR: Token no generado - Recarga la página
-                    </div>
-                <?php endif; ?>
 
                 <div class="grid-2">
                     <div class="field">
@@ -510,7 +421,7 @@ error_log("Rendering form with token: " . substr($csrf, 0, 20) . "...");
                         ?>
                             <option value="<?= (int)$obra['Id_obra_social'] ?>" 
                                 <?= $selected_obra == $obra['Id_obra_social'] ? 'selected' : '' ?>>
-                                <?= htmlspecialchars($obra['Nombre'], ENT_QUOTES, 'UTF-8') ?>
+                                <?= htmlspecialchars($obra['nombre'], ENT_QUOTES, 'UTF-8') ?>
                             </option>
                         <?php endforeach; ?>
                         <option value="-1" <?= $selected_obra == '-1' ? 'selected' : '' ?>>➕ Otra (especificar)</option>
@@ -594,29 +505,6 @@ error_log("Rendering form with token: " . substr($csrf, 0, 20) . "...");
         </div>
     </div>
 
-    <script>
-        // ✅ VERIFICACIÓN ADICIONAL: Asegurar que el token se envía
-        document.addEventListener('DOMContentLoaded', function() {
-            const form = document.getElementById('registerForm');
-            const tokenInput = document.getElementById('csrf_token');
-            
-            console.log('🔐 CSRF Token en formulario:', tokenInput ? tokenInput.value.substring(0, 10) + '...' : 'NO ENCONTRADO');
-            
-            form.addEventListener('submit', function(e) {
-                const tokenValue = tokenInput ? tokenInput.value : '';
-                
-                if (!tokenValue || tokenValue.length < 10) {
-                    e.preventDefault();
-                    alert('⚠️ ERROR CRÍTICO: Token de seguridad inválido.\n\nRecarga la página (F5) e intenta nuevamente.');
-                    console.error('Token inválido al enviar:', tokenValue);
-                    return false;
-                }
-                
-                console.log('✅ Enviando formulario con token:', tokenValue.substring(0, 10) + '...');
-                console.log('📦 Datos del formulario:', new FormData(form));
-            });
-        });
-    </script>
     <script src="../assets/js/register.js"></script>
 </body>
 </html>

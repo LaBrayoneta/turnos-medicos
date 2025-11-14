@@ -26,15 +26,15 @@ CREATE TABLE `diagnostico` (
   `Id_diagnostico` bigint unsigned NOT NULL AUTO_INCREMENT,
   `Id_turno` bigint unsigned NOT NULL,
   `Id_medico` bigint unsigned NOT NULL,
-  `Diagnostico` text COLLATE utf8mb4_unicode_ci NOT NULL,
-  `Sintomas` text COLLATE utf8mb4_unicode_ci,
-  `Observaciones` text COLLATE utf8mb4_unicode_ci,
-  `Fecha_Diagnostico` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `diagnostico` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `sintomas` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
+  `observaciones` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
+  `fecha_diagnostico` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`Id_diagnostico`),
   UNIQUE KEY `Id_diagnostico` (`Id_diagnostico`),
   KEY `idx_turno` (`Id_turno`),
   KEY `idx_medico` (`Id_medico`),
-  KEY `idx_fecha` (`Fecha_Diagnostico`),
+  KEY `idx_fecha` (`fecha_diagnostico`),
   CONSTRAINT `diagnostico_ibfk_1` FOREIGN KEY (`Id_turno`) REFERENCES `turno` (`Id_turno`) ON DELETE CASCADE,
   CONSTRAINT `diagnostico_ibfk_2` FOREIGN KEY (`Id_medico`) REFERENCES `medico` (`Id_medico`) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -58,13 +58,13 @@ DROP TABLE IF EXISTS `especialidad`;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `especialidad` (
   `Id_Especialidad` bigint unsigned NOT NULL AUTO_INCREMENT,
-  `Nombre` varchar(150) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `Descripcion` text COLLATE utf8mb4_unicode_ci,
-  `Activo` tinyint(1) DEFAULT '1',
+  `nombre` varchar(150) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `descripcion` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
+  `activo` tinyint(1) DEFAULT '1',
   PRIMARY KEY (`Id_Especialidad`),
   UNIQUE KEY `Id_Especialidad` (`Id_Especialidad`),
-  UNIQUE KEY `Nombre` (`Nombre`),
-  KEY `idx_activo` (`Activo`)
+  UNIQUE KEY `Nombre` (`nombre`),
+  KEY `idx_activo` (`activo`)
 ) ENGINE=InnoDB AUTO_INCREMENT=8 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -90,16 +90,16 @@ CREATE TABLE `historial_clinico` (
   `Id_paciente` bigint unsigned NOT NULL,
   `Id_turno` bigint unsigned DEFAULT NULL,
   `Id_medico` bigint unsigned NOT NULL,
-  `Tipo_Registro` enum('consulta','diagnostico','receta','nota','estudio') COLLATE utf8mb4_unicode_ci DEFAULT 'nota',
-  `Contenido` text COLLATE utf8mb4_unicode_ci NOT NULL,
-  `Fecha_Registro` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `tipo_registro` enum('consulta','diagnostico','receta','nota','estudio') CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT 'nota',
+  `contenido` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `fecha_registro` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`Id_historial`),
   UNIQUE KEY `Id_historial` (`Id_historial`),
   KEY `Id_turno` (`Id_turno`),
   KEY `Id_medico` (`Id_medico`),
   KEY `idx_paciente` (`Id_paciente`),
-  KEY `idx_fecha` (`Fecha_Registro`),
-  KEY `idx_tipo` (`Tipo_Registro`),
+  KEY `idx_fecha` (`fecha_registro`),
+  KEY `idx_tipo` (`tipo_registro`),
   CONSTRAINT `historial_clinico_ibfk_1` FOREIGN KEY (`Id_paciente`) REFERENCES `paciente` (`Id_paciente`) ON DELETE CASCADE,
   CONSTRAINT `historial_clinico_ibfk_2` FOREIGN KEY (`Id_turno`) REFERENCES `turno` (`Id_turno`) ON DELETE SET NULL,
   CONSTRAINT `historial_clinico_ibfk_3` FOREIGN KEY (`Id_medico`) REFERENCES `medico` (`Id_medico`) ON DELETE RESTRICT
@@ -125,14 +125,14 @@ DROP TABLE IF EXISTS `horario_medico`;
 CREATE TABLE `horario_medico` (
   `Id_horario` bigint unsigned NOT NULL AUTO_INCREMENT,
   `Id_medico` bigint unsigned NOT NULL,
-  `Dia_semana` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `Hora_inicio` time NOT NULL,
-  `Hora_fin` time NOT NULL,
+  `dia_semana` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `hora_inicio` time NOT NULL,
+  `hora_fin` time NOT NULL,
   PRIMARY KEY (`Id_horario`),
   UNIQUE KEY `Id_horario` (`Id_horario`),
-  UNIQUE KEY `unique_horario` (`Id_medico`,`Dia_semana`,`Hora_inicio`,`Hora_fin`),
-  KEY `idx_medico_dia` (`Id_medico`,`Dia_semana`),
-  KEY `idx_horario` (`Hora_inicio`,`Hora_fin`),
+  UNIQUE KEY `unique_horario` (`Id_medico`,`dia_semana`,`hora_inicio`,`hora_fin`),
+  KEY `idx_medico_dia` (`Id_medico`,`dia_semana`),
+  KEY `idx_horario` (`hora_inicio`,`hora_fin`),
   CONSTRAINT `horario_medico_ibfk_1` FOREIGN KEY (`Id_medico`) REFERENCES `medico` (`Id_medico`) ON DELETE CASCADE,
   CONSTRAINT `horario_medico_chk_1` CHECK ((`Dia_semana` in (_utf8mb4'lunes',_utf8mb4'martes',_utf8mb4'miercoles',_utf8mb4'jueves',_utf8mb4'viernes',_utf8mb4'sabado',_utf8mb4'domingo')))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -156,16 +156,16 @@ DROP TABLE IF EXISTS `medicamento`;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `medicamento` (
   `Id_medicamento` bigint unsigned NOT NULL AUTO_INCREMENT,
-  `Nombre` varchar(200) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `Principio_Activo` varchar(200) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  `Presentacion` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  `Dosis_Usual` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  `Activo` tinyint(1) DEFAULT '1',
-  `Fecha_Alta` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `nombre` varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `principio_activo` varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `presentacion` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `dosis_usual` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `activo` tinyint(1) DEFAULT '1',
+  `fecha_alta` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`Id_medicamento`),
   UNIQUE KEY `Id_medicamento` (`Id_medicamento`),
-  KEY `idx_nombre` (`Nombre`),
-  KEY `idx_activo` (`Activo`)
+  KEY `idx_nombre` (`nombre`),
+  KEY `idx_activo` (`activo`)
 ) ENGINE=InnoDB AUTO_INCREMENT=11 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -190,15 +190,15 @@ CREATE TABLE `medico` (
   `Id_medico` bigint unsigned NOT NULL AUTO_INCREMENT,
   `Id_usuario` bigint unsigned NOT NULL,
   `Id_Especialidad` bigint unsigned NOT NULL,
-  `Legajo` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `Duracion_Turno` int DEFAULT '30',
-  `Activo` tinyint(1) DEFAULT '1',
+  `legajo` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `duracion_turno` int DEFAULT '30',
+  `activo` tinyint(1) DEFAULT '1',
   PRIMARY KEY (`Id_medico`),
   UNIQUE KEY `Id_medico` (`Id_medico`),
   UNIQUE KEY `Id_usuario` (`Id_usuario`),
-  UNIQUE KEY `Legajo` (`Legajo`),
+  UNIQUE KEY `Legajo` (`legajo`),
   KEY `idx_especialidad` (`Id_Especialidad`),
-  KEY `idx_activo` (`Activo`),
+  KEY `idx_activo` (`activo`),
   CONSTRAINT `medico_ibfk_1` FOREIGN KEY (`Id_usuario`) REFERENCES `usuario` (`Id_usuario`) ON DELETE CASCADE,
   CONSTRAINT `medico_ibfk_2` FOREIGN KEY (`Id_Especialidad`) REFERENCES `especialidad` (`Id_Especialidad`) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -222,13 +222,13 @@ DROP TABLE IF EXISTS `obra_social`;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `obra_social` (
   `Id_obra_social` bigint unsigned NOT NULL AUTO_INCREMENT,
-  `Nombre` varchar(150) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `Activo` tinyint(1) DEFAULT '1',
-  `Fecha_Alta` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `nombre` varchar(150) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `activo` tinyint(1) DEFAULT '1',
+  `fecha_alta` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`Id_obra_social`),
   UNIQUE KEY `Id_obra_social` (`Id_obra_social`),
-  UNIQUE KEY `Nombre` (`Nombre`),
-  KEY `idx_activo` (`Activo`)
+  UNIQUE KEY `Nombre` (`nombre`),
+  KEY `idx_activo` (`activo`)
 ) ENGINE=InnoDB AUTO_INCREMENT=8 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -253,15 +253,15 @@ CREATE TABLE `paciente` (
   `Id_paciente` bigint unsigned NOT NULL AUTO_INCREMENT,
   `Id_usuario` bigint unsigned NOT NULL,
   `Id_obra_social` bigint unsigned DEFAULT NULL,
-  `Nro_carnet` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  `Libreta_sanitaria` varchar(150) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'N/A',
-  `Activo` tinyint(1) DEFAULT '1',
-  `Fecha_Alta` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `nro_carnet` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `libreta_sanitaria` varchar(150) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'N/A',
+  `activo` tinyint(1) DEFAULT '1',
+  `fecha_alta` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`Id_paciente`),
   UNIQUE KEY `Id_paciente` (`Id_paciente`),
   UNIQUE KEY `Id_usuario` (`Id_usuario`),
   KEY `idx_obra_social` (`Id_obra_social`),
-  KEY `idx_activo` (`Activo`),
+  KEY `idx_activo` (`activo`),
   CONSTRAINT `paciente_ibfk_1` FOREIGN KEY (`Id_usuario`) REFERENCES `usuario` (`Id_usuario`) ON DELETE CASCADE,
   CONSTRAINT `paciente_ibfk_2` FOREIGN KEY (`Id_obra_social`) REFERENCES `obra_social` (`Id_obra_social`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -289,18 +289,18 @@ CREATE TABLE `receta` (
   `Id_turno` bigint unsigned NOT NULL,
   `Id_medico` bigint unsigned NOT NULL,
   `Id_paciente` bigint unsigned NOT NULL,
-  `Medicamentos` text COLLATE utf8mb4_unicode_ci NOT NULL COMMENT 'Lista de medicamentos e indicaciones',
-  `Indicaciones` text COLLATE utf8mb4_unicode_ci,
-  `Duracion_Tratamiento` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  `Fecha_Receta` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
-  `Fecha_Vencimiento` date DEFAULT NULL,
+  `medicamentos` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `indicaciones` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
+  `duracion_tratamiento` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `fecha_receta` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `fecha_vencimiento` date DEFAULT NULL,
   PRIMARY KEY (`Id_receta`),
   UNIQUE KEY `Id_receta` (`Id_receta`),
   KEY `Id_turno` (`Id_turno`),
   KEY `idx_diagnostico` (`Id_diagnostico`),
   KEY `idx_medico` (`Id_medico`),
   KEY `idx_paciente` (`Id_paciente`),
-  KEY `idx_fecha_vencimiento` (`Fecha_Vencimiento`),
+  KEY `idx_fecha_vencimiento` (`fecha_vencimiento`),
   CONSTRAINT `receta_ibfk_1` FOREIGN KEY (`Id_diagnostico`) REFERENCES `diagnostico` (`Id_diagnostico`) ON DELETE CASCADE,
   CONSTRAINT `receta_ibfk_2` FOREIGN KEY (`Id_turno`) REFERENCES `turno` (`Id_turno`) ON DELETE CASCADE,
   CONSTRAINT `receta_ibfk_3` FOREIGN KEY (`Id_medico`) REFERENCES `medico` (`Id_medico`) ON DELETE RESTRICT,
@@ -328,12 +328,12 @@ DROP TABLE IF EXISTS `secretaria`;
 CREATE TABLE `secretaria` (
   `Id_secretaria` bigint unsigned NOT NULL AUTO_INCREMENT,
   `Id_usuario` bigint unsigned NOT NULL,
-  `Activo` tinyint(1) DEFAULT '1',
-  `Fecha_Alta` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `activo` tinyint(1) DEFAULT '1',
+  `fecha_alta` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`Id_secretaria`),
   UNIQUE KEY `Id_secretaria` (`Id_secretaria`),
   UNIQUE KEY `Id_usuario` (`Id_usuario`),
-  KEY `idx_activo` (`Activo`),
+  KEY `idx_activo` (`activo`),
   CONSTRAINT `secretaria_ibfk_1` FOREIGN KEY (`Id_usuario`) REFERENCES `usuario` (`Id_usuario`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -359,24 +359,24 @@ CREATE TABLE `turno` (
   `Id_paciente` bigint unsigned NOT NULL,
   `Id_medico` bigint unsigned NOT NULL,
   `Id_secretaria` bigint unsigned DEFAULT NULL,
-  `Fecha` timestamp NOT NULL,
-  `Estado` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT 'reservado',
-  `Atendido` tinyint(1) DEFAULT '0',
-  `Fecha_Atencion` timestamp NULL DEFAULT NULL,
+  `fecha` timestamp NOT NULL,
+  `estado` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT 'reservado',
+  `atendido` tinyint(1) DEFAULT '0',
+  `fecha_atencion` timestamp NULL DEFAULT NULL,
   `Id_medico_atencion` bigint unsigned DEFAULT NULL,
-  `Observaciones` text COLLATE utf8mb4_unicode_ci,
-  `Fecha_Creacion` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
-  `Fecha_Modificacion` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `observaciones` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
+  `fecha_creacion` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `fecha_modificacion` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`Id_turno`),
   UNIQUE KEY `Id_turno` (`Id_turno`),
-  UNIQUE KEY `unique_turno` (`Id_medico`,`Fecha`),
+  UNIQUE KEY `unique_turno` (`Id_medico`,`fecha`),
   KEY `Id_secretaria` (`Id_secretaria`),
   KEY `Id_medico_atencion` (`Id_medico_atencion`),
-  KEY `idx_fecha` (`Fecha`),
-  KEY `idx_medico_fecha` (`Id_medico`,`Fecha`),
-  KEY `idx_paciente_fecha` (`Id_paciente`,`Fecha`),
-  KEY `idx_estado` (`Estado`),
-  KEY `idx_atendido` (`Atendido`),
+  KEY `idx_fecha` (`fecha`),
+  KEY `idx_medico_fecha` (`Id_medico`,`fecha`),
+  KEY `idx_paciente_fecha` (`Id_paciente`,`fecha`),
+  KEY `idx_estado` (`estado`),
+  KEY `idx_atendido` (`atendido`),
   CONSTRAINT `turno_ibfk_1` FOREIGN KEY (`Id_paciente`) REFERENCES `paciente` (`Id_paciente`) ON DELETE RESTRICT,
   CONSTRAINT `turno_ibfk_2` FOREIGN KEY (`Id_medico`) REFERENCES `medico` (`Id_medico`) ON DELETE RESTRICT,
   CONSTRAINT `turno_ibfk_3` FOREIGN KEY (`Id_secretaria`) REFERENCES `secretaria` (`Id_secretaria`) ON DELETE SET NULL,
@@ -403,57 +403,109 @@ UNLOCK TABLES;
 /*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
 /*!50003 CREATE*/ /*!50017 DEFINER=`root`@`localhost`*/ /*!50003 TRIGGER `before_turno_insert` BEFORE INSERT ON `turno` FOR EACH ROW BEGIN
+
     DECLARE dia_semana VARCHAR(20);
+
     DECLARE hora_turno TIME;
+
     DECLARE atiende INT DEFAULT 0;
+
     DECLARE ya_existe INT DEFAULT 0;
+
     
+
     -- Obtener día de la semana
+
     SET dia_semana = CASE DAYOFWEEK(NEW.Fecha)
+
         WHEN 1 THEN 'domingo'
+
         WHEN 2 THEN 'lunes'
+
         WHEN 3 THEN 'martes'
+
         WHEN 4 THEN 'miercoles'
+
         WHEN 5 THEN 'jueves'
+
         WHEN 6 THEN 'viernes'
+
         WHEN 7 THEN 'sabado'
+
     END;
+
     
+
     SET hora_turno = TIME(NEW.Fecha);
+
     
+
     -- Verificar que el médico atienda ese día/horario
+
     SELECT COUNT(*) INTO atiende
+
     FROM horario_medico
+
     WHERE Id_medico = NEW.Id_medico
+
     AND Dia_semana = dia_semana
+
     AND hora_turno >= Hora_inicio
+
     AND hora_turno < Hora_fin;
+
     
+
     IF atiende = 0 THEN
+
         SIGNAL SQLSTATE '45000'
+
         SET MESSAGE_TEXT = 'El médico no atiende en ese horario';
+
     END IF;
+
     
+
     -- Verificar que no haya turno duplicado
+
     SELECT COUNT(*) INTO ya_existe
+
     FROM turno
+
     WHERE Id_medico = NEW.Id_medico
+
     AND Fecha = NEW.Fecha
+
     AND (Estado IS NULL OR Estado != 'cancelado');
+
     
+
     IF ya_existe > 0 THEN
+
         SIGNAL SQLSTATE '45000'
+
         SET MESSAGE_TEXT = 'Ya existe un turno en ese horario';
+
     END IF;
+
     
+
     -- Valores por defecto
+
     IF NEW.Estado IS NULL THEN
+
         SET NEW.Estado = 'reservado';
+
     END IF;
+
     
+
     IF NEW.Atendido IS NULL THEN
+
         SET NEW.Atendido = FALSE;
+
     END IF;
+
 END */;;
 DELIMITER ;
 /*!50003 SET sql_mode              = @saved_sql_mode */ ;
@@ -470,11 +522,17 @@ DELIMITER ;
 /*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
 /*!50003 CREATE*/ /*!50017 DEFINER=`root`@`localhost`*/ /*!50003 TRIGGER `before_turno_update` BEFORE UPDATE ON `turno` FOR EACH ROW BEGIN
+
     IF NEW.Atendido = TRUE AND OLD.Atendido = FALSE THEN
+
         IF NEW.Fecha_Atencion IS NULL THEN
+
             SET NEW.Fecha_Atencion = NOW();
+
         END IF;
+
     END IF;
+
 END */;;
 DELIMITER ;
 /*!50003 SET sql_mode              = @saved_sql_mode */ ;
@@ -491,24 +549,24 @@ DROP TABLE IF EXISTS `usuario`;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `usuario` (
   `Id_usuario` bigint unsigned NOT NULL AUTO_INCREMENT,
-  `Nombre` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `Apellido` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `dni` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `email` varchar(150) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `Contraseña` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `Rol` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'paciente',
+  `nombre` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `apellido` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `dni` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `email` varchar(150) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `password` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `rol` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'paciente',
   `failed_login_attempts` int DEFAULT '0',
   `last_failed_login` timestamp NULL DEFAULT NULL,
   `account_locked_until` timestamp NULL DEFAULT NULL,
   `ultimo_acceso` timestamp NULL DEFAULT NULL,
-  `Fecha_Registro` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `fecha_registro` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`Id_usuario`),
   UNIQUE KEY `Id_usuario` (`Id_usuario`),
   UNIQUE KEY `dni` (`dni`),
   UNIQUE KEY `email` (`email`),
   KEY `idx_dni` (`dni`),
   KEY `idx_email` (`email`),
-  KEY `idx_rol` (`Rol`),
+  KEY `idx_rol` (`rol`),
   CONSTRAINT `usuario_chk_1` CHECK ((`Rol` in (_utf8mb4'paciente',_utf8mb4'medico',_utf8mb4'secretaria')))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -535,4 +593,4 @@ UNLOCK TABLES;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2025-11-14  0:27:23
+-- Dump completed on 2025-11-14  0:41:40
