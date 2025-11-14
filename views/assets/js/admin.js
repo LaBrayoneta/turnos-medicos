@@ -1,4 +1,4 @@
-// admin.js - Panel Administrativo Mejorado (COMPLETO)
+// admin.js - Panel Administrativo Mejorado (COMPLETO - CORREGIDO PARA MINÚSCULAS)
 (function(){
   const $ = s => document.querySelector(s);
   const $$ = s => document.querySelectorAll(s);
@@ -110,6 +110,7 @@
       secretariasData = data.secretarias || [];
       obrasSocialesData = data.obras_sociales || [];
 
+      // ✅ Cargar especialidades en los selects
       const espSelects = ['#espCreateSelect', '#fEsp', '#editMedEsp'];
       espSelects.forEach(sel => {
         const element = $(sel);
@@ -117,7 +118,9 @@
           element.innerHTML = `<option value="">Elegir…</option>`;
           especialidades.forEach(e=>{
             const opt = document.createElement('option');
-            opt.value=e.Id_Especialidad; opt.textContent=e.Nombre;
+            opt.value = e.Id_Especialidad;
+            // ✅ Soportar tanto minúsculas como mayúsculas
+            opt.textContent = e.nombre || e.Nombre || 'Sin nombre';
             element.appendChild(opt);
           });
         }
@@ -139,14 +142,18 @@
     tblObras.innerHTML='';
     rows.forEach(r=>{
       const tr=document.createElement('tr');
-      const estadoTexto = r.Activo ? 'Activa' : 'Inactiva';
-      const badgeClass = r.Activo ? 'ok' : 'warn';
+      // ✅ Soportar minúsculas y mayúsculas
+      const nombreObra = r.nombre || r.Nombre || '';
+      const activo = r.activo !== undefined ? r.activo : (r.Activo !== undefined ? r.Activo : false);
+      const estadoTexto = activo ? 'Activa' : 'Inactiva';
+      const badgeClass = activo ? 'ok' : 'warn';
+      
       tr.innerHTML = `
-        <td>${esc(r.Nombre||'')}</td>
+        <td>${esc(nombreObra)}</td>
         <td><span class="badge ${badgeClass}">${estadoTexto}</span></td>
         <td class="row-actions">
           <button class="btn ghost btn-toggle-obra" data-id="${r.Id_obra_social}">
-            ${r.Activo ? '❌ Desactivar' : '✅ Activar'}
+            ${activo ? '❌ Desactivar' : '✅ Activar'}
           </button>
           <button class="btn danger btn-delete-obra" data-id="${r.Id_obra_social}">🗑️ Eliminar</button>
         </td>`;
@@ -222,14 +229,27 @@
     rows.forEach(r=>{
       const tr=document.createElement('tr');
       
+      // ✅ Soportar minúsculas y mayúsculas
+      const apellido = r.apellido || r.Apellido || '';
+      const nombre = r.nombre || r.Nombre || '';
+      const dni = r.dni || '';
+      const especialidad = r.Especialidad || '';
+      const legajo = r.legajo || r.Legajo || '';
+      
       let horariosHTML = '<div style="display:flex;flex-direction:column;gap:4px">';
       if (r.horarios && r.horarios.length > 0) {
         const horariosPorDia = {};
         r.horarios.forEach(h => {
-          if (!horariosPorDia[h.Dia_semana]) horariosPorDia[h.Dia_semana] = [];
-          horariosPorDia[h.Dia_semana].push({
-            inicio: h.Hora_inicio.substring(0,5),
-            fin: h.Hora_fin.substring(0,5)
+          // ✅ Soportar ambos formatos
+          const diaSemana = h.dia_semana || h.Dia_semana;
+          if (!horariosPorDia[diaSemana]) horariosPorDia[diaSemana] = [];
+          
+          const horaInicio = (h.hora_inicio || h.Hora_inicio || '').substring(0,5);
+          const horaFin = (h.hora_fin || h.Hora_fin || '').substring(0,5);
+          
+          horariosPorDia[diaSemana].push({
+            inicio: horaInicio,
+            fin: horaFin
           });
         });
         
@@ -248,10 +268,10 @@
       horariosHTML += '</div>';
       
       tr.innerHTML = `
-        <td>${esc((r.Apellido||'')+', '+(r.Nombre||''))}</td>
-        <td>${esc(r.dni||'')}</td>
-        <td>${esc(r.Especialidad||'')}</td>
-        <td>${esc(r.Legajo||'')}</td>
+        <td>${esc(apellido + ', ' + nombre)}</td>
+        <td>${esc(dni)}</td>
+        <td>${esc(especialidad)}</td>
+        <td>${esc(legajo)}</td>
         <td>${horariosHTML}</td>
         <td class="row-actions">
           <button class="btn ghost btn-edit-med" data-id="${r.Id_medico}">✏️ Editar</button>
@@ -269,10 +289,10 @@
     if (!medico) {alert('Médico no encontrado'); return;}
 
     $('#editMedId').value = medico.Id_medico;
-    $('#editMedNombre').value = medico.Nombre || '';
-    $('#editMedApellido').value = medico.Apellido || '';
+    $('#editMedNombre').value = medico.nombre || medico.Nombre || '';
+    $('#editMedApellido').value = medico.apellido || medico.Apellido || '';
     $('#editMedEmail').value = medico.email || '';
-    $('#editMedLegajo').value = medico.Legajo || '';
+    $('#editMedLegajo').value = medico.legajo || medico.Legajo || '';
     $('#editMedEsp').value = medico.Id_Especialidad || '';
 
     if (window.loadMedicoHorarios) {
@@ -307,10 +327,17 @@
     tblSecretarias.innerHTML='';
     rows.forEach(r=>{
       const tr=document.createElement('tr');
+      
+      // ✅ Soportar minúsculas y mayúsculas
+      const apellido = r.apellido || r.Apellido || '';
+      const nombre = r.nombre || r.Nombre || '';
+      const dni = r.dni || '';
+      const email = r.email || '';
+      
       tr.innerHTML = `
-        <td>${esc((r.Apellido||'')+', '+(r.Nombre||''))}</td>
-        <td>${esc(r.dni||'')}</td>
-        <td>${esc(r.email||'')}</td>
+        <td>${esc(apellido + ', ' + nombre)}</td>
+        <td>${esc(dni)}</td>
+        <td>${esc(email)}</td>
         <td class="row-actions">
           <button class="btn ghost btn-edit-sec" data-id="${r.Id_secretaria}">✏️ Editar</button>
           <button class="btn danger btn-delete-sec" data-id="${r.Id_secretaria}">🗑️</button>
@@ -349,8 +376,8 @@
     if (!sec) return;
 
     $('#editSecId').value = sec.Id_secretaria;
-    $('#editSecNombre').value = sec.Nombre || '';
-    $('#editSecApellido').value = sec.Apellido || '';
+    $('#editSecNombre').value = sec.nombre || sec.Nombre || '';
+    $('#editSecApellido').value = sec.apellido || sec.Apellido || '';
     $('#editSecEmail').value = sec.email || '';
 
     showModal(modalEditSecretaria);
@@ -415,8 +442,11 @@
       fMed.innerHTML = `<option value="">Elegí médico…</option>`;
       (data.items||[]).forEach(m=>{
         const opt = document.createElement('option');
-        opt.value=m.Id_medico;
-        opt.textContent=`${m.Apellido}, ${m.Nombre}`;
+        opt.value = m.Id_medico;
+        // ✅ Soportar ambos formatos
+        const apellido = m.apellido || m.Apellido || '';
+        const nombre = m.nombre || m.Nombre || '';
+        opt.textContent = `${apellido}, ${nombre}`;
         fMed.appendChild(opt);
       });
       fMed.disabled = false;
@@ -736,13 +766,21 @@
     items.forEach(p=>{
       const div = document.createElement('div');
       div.className = 'paciente-item';
+      
+      // ✅ Soportar ambos formatos
+      const apellido = p.apellido || p.Apellido || '';
+      const nombre = p.nombre || p.Nombre || '';
+      const dni = p.dni || '';
+      const email = p.email || '';
+      const obraSocial = p.Obra_social || '';
+      
       div.innerHTML = `
-        <strong>${esc(p.Apellido)}, ${esc(p.Nombre)}</strong><br>
-        <small style="color:var(--muted)">DNI: ${esc(p.dni)} | ${esc(p.email)}</small>
+        <strong>${esc(apellido)}, ${esc(nombre)}</strong><br>
+        <small style="color:var(--muted)">DNI: ${esc(dni)} | ${esc(email)}</small>
       `;
       div.addEventListener('click', ()=>{
         selectedPacienteId.value = p.Id_paciente;
-        selectedPacienteInfo.innerHTML = `<strong>${esc(p.Apellido)}, ${esc(p.Nombre)}</strong><br><small>DNI: ${esc(p.dni)} | ${esc(p.Obra_social || 'Sin obra social')}</small>`;
+        selectedPacienteInfo.innerHTML = `<strong>${esc(apellido)}, ${esc(nombre)}</strong><br><small>DNI: ${esc(dni)} | ${esc(obraSocial || 'Sin obra social')}</small>`;
         selectedPacienteInfo.style.color = 'var(--ok)';
         document.querySelectorAll('.paciente-item').forEach(item => item.classList.remove('selected'));
         div.classList.add('selected');

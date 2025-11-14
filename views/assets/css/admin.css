@@ -325,6 +325,7 @@ body{
 table{
   width:100%;
   border-collapse:collapse;
+  border-spacing:0;
 }
 
 table.mini{
@@ -337,6 +338,9 @@ th,td{
   text-align:left;
   vertical-align:middle;
   font-size:14px;
+  /* ✅ Eliminar bordes laterales */
+  border-left:none;
+  border-right:none;
 }
 
 th{
@@ -349,10 +353,23 @@ th{
   text-transform:uppercase;
   font-size:12px;
   letter-spacing:1px;
+  border-top:none; /* ✅ Sin borde superior en headers */
+}
+
+/* ✅ Primera fila sin borde superior */
+tbody tr:first-child td {
+  border-top:none;
+}
+
+/* ✅ Última fila sin borde inferior */
+tbody tr:last-child td {
+  border-bottom:none;
 }
 
 tbody tr{
   transition:all 0.2s;
+  /* ✅ Borde completo para cada fila */
+  border-bottom:1px solid var(--border);
 }
 
 tbody tr:hover{
@@ -360,15 +377,39 @@ tbody tr:hover{
   transform:translateX(4px);
 }
 
+/* ✅ Alinear verticalmente el contenido de celdas con múltiples líneas */
+td > div {
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+  align-items:flex-start;
+}
+
+/* ✅ Estilos específicos para la columna de horarios */
+td:has(> div[style*="flex-direction:column"]) {
+  vertical-align:top;
+  padding-top:12px;
+  padding-bottom:12px;
+}
+
 .row-actions{
   display:flex;
   gap:8px;
   flex-wrap:wrap;
+  align-items:center;
+  justify-content:flex-start;
 }
 
 .row-actions .btn{
   padding:6px 12px;
   font-size:13px;
+  white-space:nowrap;
+}
+
+/* ✅ Ajuste para celdas de acciones */
+td.row-actions {
+  vertical-align:middle;
+  padding:8px 16px;
 }
 
 /* BADGES */
@@ -596,3 +637,114 @@ tbody tr:hover{
   border-color: var(--primary);
 }
 
+/* TABLAS - VERSIÓN ALTERNATIVA CON BORDES SUAVES */
+.table-wrap{
+  overflow:auto;
+  max-height:560px;
+  border:1px solid var(--border);
+  border-radius:14px;
+  background:rgba(10,14,26,0.4);
+  box-shadow:var(--shadow-sm);
+}
+
+.table-wrap::-webkit-scrollbar{width:10px;height:10px}
+.table-wrap::-webkit-scrollbar-track{background:rgba(10,14,26,0.5)}
+.table-wrap::-webkit-scrollbar-thumb{background:var(--border);border-radius:5px}
+.table-wrap::-webkit-scrollbar-thumb:hover{background:var(--primary)}
+
+table{
+  width:100%;
+  border-collapse:separate;
+  border-spacing:0;
+}
+
+table.mini{
+  font-size:14px;
+}
+
+th,td{
+  padding:14px 16px;
+  text-align:left;
+  vertical-align:middle;
+  font-size:14px;
+  border:none;
+}
+
+th{
+  background:rgba(34,211,238,0.08);
+  font-weight:700;
+  color:var(--primary);
+  position:sticky;
+  top:0;
+  z-index:1;
+  text-transform:uppercase;
+  font-size:12px;
+  letter-spacing:1px;
+  border-bottom:2px solid var(--border);
+}
+
+/* Primera columna con borde izquierdo redondeado */
+th:first-child {
+  border-top-left-radius:14px;
+}
+
+/* Última columna con borde derecho redondeado */
+th:last-child {
+  border-top-right-radius:14px;
+}
+
+tbody tr{
+  transition:all 0.2s;
+  border-bottom:1px solid rgba(31,41,55,0.5);
+}
+
+tbody tr:last-child {
+  border-bottom:none;
+}
+
+tbody tr:last-child td:first-child {
+  border-bottom-left-radius:14px;
+}
+
+tbody tr:last-child td:last-child {
+  border-bottom-right-radius:14px;
+}
+
+tbody tr:hover{
+  background:linear-gradient(90deg,rgba(34,211,238,0.05) 0%,rgba(34,211,238,0.1) 50%,rgba(34,211,238,0.05) 100%);
+  transform:translateX(4px);
+}
+
+/* Alinear verticalmente el contenido */
+td > div {
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+  align-items:flex-start;
+}
+
+/* Columna de horarios */
+td:has(> div[style*="flex-direction:column"]) {
+  vertical-align:top;
+  padding-top:12px;
+  padding-bottom:12px;
+}
+
+.row-actions{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+  align-items:center;
+  justify-content:flex-start;
+}
+
+.row-actions .btn{
+  padding:6px 12px;
+  font-size:13px;
+  white-space:nowrap;
+}
+
+td.row-actions {
+  vertical-align:middle;
+  padding:8px 16px;
+}

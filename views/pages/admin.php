@@ -1,5 +1,5 @@
 <?php
-// views/pages/admin.php - VERSIÓN CORREGIDA
+// views/pages/admin.php - VERSIÓN CORREGIDA CON COLUMNAS EN MINÚSCULAS
 // ✅ CRÍTICO: NO debe haber NADA antes de este <?php
 
 // ✅ Configuración de errores para debugging
@@ -42,12 +42,12 @@ function must_staff(PDO $pdo){
   $uid = (int)$_SESSION['Id_usuario'];
 
   try {
-    $st = $pdo->prepare("SELECT Id_secretaria FROM secretaria WHERE Id_usuario=? AND Activo=1 LIMIT 1");
+    $st = $pdo->prepare("SELECT Id_secretaria FROM secretaria WHERE Id_usuario=? AND activo=1 LIMIT 1");
     $st->execute([$uid]); 
     $secData = $st->fetch(PDO::FETCH_ASSOC);
     $isSec = (bool)$secData;
 
-    $st = $pdo->prepare("SELECT Id_medico FROM medico WHERE Id_usuario=? AND Activo=1 LIMIT 1");
+    $st = $pdo->prepare("SELECT Id_medico FROM medico WHERE Id_usuario=? AND activo=1 LIMIT 1");
     $st->execute([$uid]); 
     $me = $st->fetch(PDO::FETCH_ASSOC);
     $isMed = (bool)$me;
@@ -75,12 +75,10 @@ try {
 } catch (Throwable $e) {
   error_log("Database connection error in admin.php: " . $e->getMessage());
   
-  // Si es una petición AJAX, devolver JSON
   if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') {
     json_out(['ok'=>false,'error'=>'Error de conexión a base de datos'], 500);
   }
   
-  // Si es HTML, mostrar error
   die("Error de conexión a base de datos. Verifica la configuración.");
 }
 
@@ -94,7 +92,6 @@ $csrf = $_SESSION['csrf_token'];
 $isApiRequest = isset($_GET['fetch']) || isset($_POST['action']);
 
 if ($isApiRequest) {
-  // ✅ Verificar autorización
   [$uid,$isSec,$isMed,$myMedId,$mySecId] = must_staff($pdo);
   
   if (!$uid) {
@@ -106,57 +103,85 @@ if ($isApiRequest) {
   // ========== FETCH: INIT ==========
   if ($action === 'init') {
     try {
-      // Especialidades
+      // ✅ Especialidades
       $esps = $pdo->query("
-        SELECT Id_Especialidad, Nombre 
+        SELECT Id_Especialidad, nombre 
         FROM especialidad 
-        WHERE Activo=1 
-        ORDER BY Nombre
+        WHERE activo=1 
+        ORDER BY nombre
       ")->fetchAll(PDO::FETCH_ASSOC);
       
-      // Médicos con horarios
+      // ✅ Médicos con horarios
       $meds = $pdo->query("
-        SELECT m.Id_medico, u.Apellido, u.Nombre, u.dni, u.email, 
-               e.Nombre AS Especialidad, m.Legajo, m.Id_Especialidad
+        SELECT m.Id_medico, u.apellido, u.nombre, u.dni, u.email, 
+               e.nombre AS Especialidad, m.legajo, m.Id_Especialidad
         FROM medico m
         JOIN usuario u ON u.Id_usuario=m.Id_usuario
         LEFT JOIN especialidad e ON e.Id_Especialidad=m.Id_Especialidad
-        WHERE m.Activo=1
-        ORDER BY u.Apellido, u.Nombre
+        WHERE m.activo=1
+        ORDER BY u.apellido, u.nombre
       ")->fetchAll(PDO::FETCH_ASSOC);
       
       // Cargar horarios para cada médico
       $stHorarios = $pdo->prepare("
-        SELECT Dia_semana, Hora_inicio, Hora_fin 
+        SELECT dia_semana, hora_inicio, hora_fin 
         FROM horario_medico 
         WHERE Id_medico=? 
-        ORDER BY FIELD(Dia_semana, 'lunes','martes','miercoles','jueves','viernes','sabado','domingo'), Hora_inicio
+        ORDER BY FIELD(dia_semana, 'lunes','martes','miercoles','jueves','viernes','sabado','domingo'), hora_inicio
       ");
       
       foreach($meds as &$med) {
         $stHorarios->execute([$med['Id_medico']]);
-        $med['horarios'] = $stHorarios->fetchAll(PDO::FETCH_ASSOC);
+        $horarios = $stHorarios->fetchAll(PDO::FETCH_ASSOC);
+        $med['horarios'] = $horarios;
         
-        $dias = array_unique(array_map(fn($h)=>$h['Dia_semana'], $med['horarios']));
+        // Formatear para JS
+        foreach($med['horarios'] as &$h) {
+          $h['Dia_semana'] = $h['dia_semana'];
+          $h['Hora_inicio'] = $h['hora_inicio'];
+          $h['Hora_fin'] = $h['hora_fin'];
+        }
+        unset($h);
+        
+        // Formatear datos del médico
+        $med['Apellido'] = $med['apellido'];
+        $med['Nombre'] = $med['nombre'];
+        $med['Legajo'] = $med['legajo'];
+        
+        $dias = array_unique(array_map(fn($h)=>$h['dia_semana'], $horarios));
         $med['Dias_Disponibles'] = implode(',', $dias);
       }
-      unset($med); // Romper referencia
+      unset($med);
       
-      // Secretarias
+      // ✅ Secretarias
       $secs = $pdo->query("
-        SELECT s.Id_secretaria, u.Apellido, u.Nombre, u.dni, u.email, u.Id_usuario
+        SELECT s.Id_secretaria, u.apellido, u.nombre, u.dni, u.email, u.Id_usuario
         FROM secretaria s
         JOIN usuario u ON u.Id_usuario=s.Id_usuario
-        WHERE s.Activo=1
-        ORDER BY u.Apellido, u.Nombre
+        WHERE s.activo=1
+        ORDER BY u.apellido, u.nombre
       ")->fetchAll(PDO::FETCH_ASSOC);
       
-      // Obras sociales
+      // Formatear para JS
+      foreach($secs as &$sec) {
+        $sec['Apellido'] = $sec['apellido'];
+        $sec['Nombre'] = $sec['nombre'];
+      }
+      unset($sec);
+      
+      // ✅ Obras sociales
       $obras = $pdo->query("
-        SELECT Id_obra_social, Nombre, Activo 
+        SELECT Id_obra_social, nombre, activo 
         FROM obra_social 
-        ORDER BY Nombre
+        ORDER BY nombre
       ")->fetchAll(PDO::FETCH_ASSOC);
+      
+      // Formatear para JS
+      foreach($obras as &$obra) {
+        $obra['Nombre'] = $obra['nombre'];
+        $obra['Activo'] = $obra['activo'];
+      }
+      unset($obra);
       
       json_out([
         'ok'=>true,
@@ -180,11 +205,11 @@ if ($isApiRequest) {
       $nombre = trim($_POST['nombre'] ?? '');
       if (!$nombre) throw new Exception('El nombre es obligatorio');
       
-      $check = $pdo->prepare("SELECT COUNT(*) FROM obra_social WHERE Nombre=?");
+      $check = $pdo->prepare("SELECT COUNT(*) FROM obra_social WHERE nombre=?");
       $check->execute([$nombre]);
       if ($check->fetchColumn() > 0) throw new Exception('Esta obra social ya existe');
       
-      $stmt = $pdo->prepare("INSERT INTO obra_social (Nombre, Activo) VALUES (?, 1)");
+      $stmt = $pdo->prepare("INSERT INTO obra_social (nombre, activo) VALUES (?, 1)");
       $stmt->execute([$nombre]);
       
       json_out(['ok'=>true,'msg'=>'Obra social creada']);
@@ -199,7 +224,7 @@ if ($isApiRequest) {
       $id = (int)($_POST['id_obra_social'] ?? 0);
       if ($id <= 0) throw new Exception('ID inválido');
       
-      $stmt = $pdo->prepare("UPDATE obra_social SET Activo = NOT Activo WHERE Id_obra_social=?");
+      $stmt = $pdo->prepare("UPDATE obra_social SET activo = NOT activo WHERE Id_obra_social=?");
       $stmt->execute([$id]);
       
       json_out(['ok'=>true,'msg'=>'Estado actualizado']);
@@ -253,16 +278,17 @@ if ($isApiRequest) {
 
       $pdo->beginTransaction();
 
-      $stmt = $pdo->prepare("INSERT INTO usuario (Nombre, Apellido, dni, email, Contraseña, Rol) VALUES (?,?,?,?,?,'medico')");
+      // ✅ TODAS LAS COLUMNAS EN MINÚSCULAS
+      $stmt = $pdo->prepare("INSERT INTO usuario (nombre, apellido, dni, email, password, rol) VALUES (?,?,?,?,?,'medico')");
       $stmt->execute([$nombre, $apellido, $dni, $email, $password]);
       $idUsuario = $pdo->lastInsertId();
 
-      $stmt = $pdo->prepare("INSERT INTO medico (Legajo, Id_usuario, Id_Especialidad, Activo) VALUES (?,?,?,1)");
+      $stmt = $pdo->prepare("INSERT INTO medico (legajo, Id_usuario, Id_Especialidad, activo) VALUES (?,?,?,1)");
       $stmt->execute([$legajo, $idUsuario, $idEsp]);
       $idMedico = $pdo->lastInsertId();
 
       $stmtHorario = $pdo->prepare("
-        INSERT INTO horario_medico (Id_medico, Dia_semana, Hora_inicio, Hora_fin) 
+        INSERT INTO horario_medico (Id_medico, dia_semana, hora_inicio, hora_fin) 
         VALUES (?, ?, ?, ?)
       ");
       foreach($horarios as $h) {
@@ -299,17 +325,18 @@ if ($isApiRequest) {
 
       $pdo->beginTransaction();
 
-      $stmt = $pdo->prepare("UPDATE usuario SET Nombre=?, Apellido=?, email=? WHERE Id_usuario=?");
+      // ✅ COLUMNAS EN MINÚSCULAS
+      $stmt = $pdo->prepare("UPDATE usuario SET nombre=?, apellido=?, email=? WHERE Id_usuario=?");
       $stmt->execute([$nombre, $apellido, $email, $idUsuario]);
 
-      $stmt = $pdo->prepare("UPDATE medico SET Legajo=?, Id_Especialidad=? WHERE Id_medico=?");
+      $stmt = $pdo->prepare("UPDATE medico SET legajo=?, Id_Especialidad=? WHERE Id_medico=?");
       $stmt->execute([$legajo, $idEsp, $idMed]);
 
       $pdo->prepare("DELETE FROM horario_medico WHERE Id_medico=?")->execute([$idMed]);
       
       if (!empty($horarios)) {
         $stmtHorario = $pdo->prepare("
-          INSERT INTO horario_medico (Id_medico, Dia_semana, Hora_inicio, Hora_fin) 
+          INSERT INTO horario_medico (Id_medico, dia_semana, hora_inicio, hora_fin) 
           VALUES (?, ?, ?, ?)
         ");
         foreach($horarios as $h) {
@@ -331,7 +358,7 @@ if ($isApiRequest) {
       $idMed = (int)($_POST['id_medico'] ?? 0);
       if ($idMed <= 0) throw new Exception('ID inválido');
 
-      $stmt = $pdo->prepare("UPDATE medico SET Activo=0 WHERE Id_medico=?");
+      $stmt = $pdo->prepare("UPDATE medico SET activo=0 WHERE Id_medico=?");
       $stmt->execute([$idMed]);
 
       json_out(['ok'=>true,'msg'=>'Médico eliminado']);
@@ -354,11 +381,12 @@ if ($isApiRequest) {
 
       if (!$nombre || !$apellido || !$dni || !$email) throw new Exception('Faltan campos');
 
-      $stmt = $pdo->prepare("INSERT INTO usuario (Nombre, Apellido, dni, email, Contraseña, Rol) VALUES (?,?,?,?,?,'secretaria')");
+      // ✅ COLUMNAS EN MINÚSCULAS
+      $stmt = $pdo->prepare("INSERT INTO usuario (nombre, apellido, dni, email, password, rol) VALUES (?,?,?,?,?,'secretaria')");
       $stmt->execute([$nombre, $apellido, $dni, $email, $password]);
       $idUsuario = $pdo->lastInsertId();
 
-      $stmt = $pdo->prepare("INSERT INTO secretaria (Id_usuario, Activo) VALUES (?,1)");
+      $stmt = $pdo->prepare("INSERT INTO secretaria (Id_usuario, activo) VALUES (?,1)");
       $stmt->execute([$idUsuario]);
 
       json_out(['ok'=>true,'msg'=>'Secretaria creada']);
@@ -382,7 +410,8 @@ if ($isApiRequest) {
       $idUsuario = $stmt->fetchColumn();
       if (!$idUsuario) throw new Exception('Secretaria no encontrada');
 
-      $stmt = $pdo->prepare("UPDATE usuario SET Nombre=?, Apellido=?, email=? WHERE Id_usuario=?");
+      // ✅ COLUMNAS EN MINÚSCULAS
+      $stmt = $pdo->prepare("UPDATE usuario SET nombre=?, apellido=?, email=? WHERE Id_usuario=?");
       $stmt->execute([$nombre, $apellido, $email, $idUsuario]);
 
       json_out(['ok'=>true,'msg'=>'Secretaria actualizada']);
@@ -397,7 +426,7 @@ if ($isApiRequest) {
       $idSec = (int)($_POST['id_secretaria'] ?? 0);
       if ($idSec <= 0) throw new Exception('ID inválido');
 
-      $stmt = $pdo->prepare("UPDATE secretaria SET Activo=0 WHERE Id_secretaria=?");
+      $stmt = $pdo->prepare("UPDATE secretaria SET activo=0 WHERE Id_secretaria=?");
       $stmt->execute([$idSec]);
 
       json_out(['ok'=>true,'msg'=>'Secretaria eliminada']);
@@ -412,14 +441,23 @@ if ($isApiRequest) {
     if ($espId <= 0) json_out(['ok'=>false,'error'=>'Especialidad inválida'],400);
     
     $stmt = $pdo->prepare("
-      SELECT m.Id_medico, u.Apellido, u.Nombre
+      SELECT m.Id_medico, u.apellido, u.nombre
       FROM medico m
       JOIN usuario u ON u.Id_usuario=m.Id_usuario
-      WHERE m.Id_Especialidad=? AND m.Activo=1
-      ORDER BY u.Apellido, u.Nombre
+      WHERE m.Id_Especialidad=? AND m.activo=1
+      ORDER BY u.apellido, u.nombre
     ");
     $stmt->execute([$espId]);
-    json_out(['ok'=>true,'items'=>$stmt->fetchAll(PDO::FETCH_ASSOC)]);
+    $items = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    // Formatear para JS
+    foreach($items as &$item) {
+      $item['Apellido'] = $item['apellido'];
+      $item['Nombre'] = $item['nombre'];
+    }
+    unset($item);
+    
+    json_out(['ok'=>true,'items'=>$items]);
   }
 
   if ($action === 'agenda') {
@@ -433,22 +471,22 @@ if ($isApiRequest) {
     $params = [$medId];
 
     if ($from && preg_match('/^\d{4}-\d{2}-\d{2}$/', $from)) {
-      $where .= " AND DATE(t.Fecha)>=?";
+      $where .= " AND DATE(t.fecha)>=?";
       $params[] = $from;
     }
     if ($to && preg_match('/^\d{4}-\d{2}-\d{2}$/', $to)) {
-      $where .= " AND DATE(t.Fecha)<=?";
+      $where .= " AND DATE(t.fecha)<=?";
       $params[] = $to;
     }
 
     $stmt = $pdo->prepare("
-      SELECT t.Id_turno, t.Fecha, t.Estado, t.Id_medico,
-             up.Apellido AS PApellido, up.Nombre AS PNombre
+      SELECT t.Id_turno, t.fecha, t.estado, t.Id_medico,
+             up.apellido AS PApellido, up.nombre AS PNombre
       FROM turno t
       LEFT JOIN paciente p ON p.Id_paciente=t.Id_paciente
       LEFT JOIN usuario up ON up.Id_usuario=p.Id_usuario
       WHERE $where
-      ORDER BY t.Fecha DESC
+      ORDER BY t.fecha DESC
     ");
     $stmt->execute($params);
 
@@ -457,9 +495,9 @@ if ($isApiRequest) {
       $items[] = [
         'Id_turno' => (int)$r['Id_turno'],
         'Id_medico' => (int)($r['Id_medico'] ?? 0),
-        'fecha' => $r['Fecha'],
-        'fecha_fmt' => date('d/m/Y H:i', strtotime($r['Fecha'])),
-        'estado' => strtolower($r['Estado'] ?? 'cancelado'),
+        'fecha' => $r['fecha'],
+        'fecha_fmt' => date('d/m/Y H:i', strtotime($r['fecha'])),
+        'estado' => strtolower($r['estado'] ?? 'cancelado'),
         'paciente' => trim(($r['PApellido'] ?? '') . ', ' . ($r['PNombre'] ?? ''))
       ];
     }
@@ -477,10 +515,10 @@ if ($isApiRequest) {
     $diaSemana = weekday_name_es($date);
 
     $stmt = $pdo->prepare("
-      SELECT Hora_inicio, Hora_fin 
+      SELECT hora_inicio, hora_fin 
       FROM horario_medico 
-      WHERE Id_medico=? AND Dia_semana=?
-      ORDER BY Hora_inicio
+      WHERE Id_medico=? AND dia_semana=?
+      ORDER BY hora_inicio
     ");
     $stmt->execute([$medId, $diaSemana]);
     $horarios = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -490,17 +528,17 @@ if ($isApiRequest) {
     }
 
     $stmt = $pdo->prepare("
-      SELECT TIME(Fecha) AS hhmm 
+      SELECT TIME(fecha) AS hhmm 
       FROM turno 
-      WHERE DATE(Fecha)=? AND Id_medico=? AND (Estado IS NULL OR Estado <> 'cancelado')
+      WHERE DATE(fecha)=? AND Id_medico=? AND (estado IS NULL OR estado <> 'cancelado')
     ");
     $stmt->execute([$date, $medId]);
     $busy = array_map(fn($r) => substr($r['hhmm'], 0, 5), $stmt->fetchAll(PDO::FETCH_ASSOC));
 
     $slots = [];
     foreach($horarios as $bloque) {
-      $inicio = new DateTime($date.' '.$bloque['Hora_inicio']);
-      $fin = new DateTime($date.' '.$bloque['Hora_fin']);
+      $inicio = new DateTime($date.' '.$bloque['hora_inicio']);
+      $fin = new DateTime($date.' '.$bloque['hora_fin']);
       
       while ($inicio < $fin) {
         $slot = $inicio->format('H:i');
@@ -517,22 +555,30 @@ if ($isApiRequest) {
     if (strlen($q) < 2) json_out(['ok'=>true,'items'=>[]]);
 
     $stmt = $pdo->prepare("
-      SELECT p.Id_paciente, u.Nombre, u.Apellido, u.dni, u.email, os.Nombre AS Obra_social
+      SELECT p.Id_paciente, u.nombre, u.apellido, u.dni, u.email, os.nombre AS Obra_social
       FROM paciente p
       JOIN usuario u ON u.Id_usuario=p.Id_usuario
       LEFT JOIN obra_social os ON os.Id_obra_social=p.Id_obra_social
-      WHERE p.Activo=1 AND (
+      WHERE p.activo=1 AND (
         u.dni LIKE ? OR
-        u.Nombre LIKE ? OR
-        u.Apellido LIKE ? OR
+        u.nombre LIKE ? OR
+        u.apellido LIKE ? OR
         u.email LIKE ?
       )
       LIMIT 10
     ");
     $like = "%$q%";
     $stmt->execute([$like, $like, $like, $like]);
+    $items = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    // Formatear para JS
+    foreach($items as &$item) {
+      $item['Nombre'] = $item['nombre'];
+      $item['Apellido'] = $item['apellido'];
+    }
+    unset($item);
 
-    json_out(['ok'=>true,'items'=>$stmt->fetchAll(PDO::FETCH_ASSOC)]);
+    json_out(['ok'=>true,'items'=>$items]);
   }
 
   if ($action === 'create_turno') {
@@ -552,14 +598,14 @@ if ($isApiRequest) {
 
       $check = $pdo->prepare("
         SELECT 1 FROM turno 
-        WHERE Fecha=? AND Id_medico=? AND (Estado IS NULL OR Estado <> 'cancelado')
+        WHERE fecha=? AND Id_medico=? AND (estado IS NULL OR estado <> 'cancelado')
         LIMIT 1
       ");
       $check->execute([$fechaHora, $medId]);
       if ($check->fetch()) throw new Exception('Ese horario ya está ocupado');
 
       $stmt = $pdo->prepare("
-        INSERT INTO turno (Fecha, Estado, Id_paciente, Id_medico, Id_secretaria) 
+        INSERT INTO turno (fecha, estado, Id_paciente, Id_medico, Id_secretaria) 
         VALUES (?, 'reservado', ?, ?, ?)
       ");
       $stmt->execute([$fechaHora, $pacId, $medId, $mySecId]);
@@ -576,7 +622,7 @@ if ($isApiRequest) {
       $turnoId = (int)($_POST['turno_id'] ?? 0);
       if ($turnoId <= 0) throw new Exception('Turno inválido');
 
-      $stmt = $pdo->prepare("UPDATE turno SET Estado='cancelado' WHERE Id_turno=?");
+      $stmt = $pdo->prepare("UPDATE turno SET estado='cancelado' WHERE Id_turno=?");
       $stmt->execute([$turnoId]);
 
       json_out(['ok'=>true,'msg'=>'Turno cancelado']);
@@ -617,7 +663,7 @@ if ($isApiRequest) {
 
       $check = $pdo->prepare("
         SELECT 1 FROM turno 
-        WHERE Fecha=? AND Id_medico=? AND (Estado IS NULL OR Estado <> 'cancelado') AND Id_turno<>?
+        WHERE fecha=? AND Id_medico=? AND (estado IS NULL OR estado <> 'cancelado') AND Id_turno<>?
         LIMIT 1
       ");
       $check->execute([$fechaHora, $medId, $turnoId]);
@@ -625,7 +671,7 @@ if ($isApiRequest) {
 
       $stmt = $pdo->prepare("
         UPDATE turno 
-        SET Fecha=?, Id_medico=?, Estado='reservado' 
+        SET fecha=?, Id_medico=?, estado='reservado' 
         WHERE Id_turno=?
       ");
       $stmt->execute([$fechaHora, $medId, $turnoId]);
@@ -636,7 +682,6 @@ if ($isApiRequest) {
     }
   }
 
-  // Si llegamos aquí, la acción no fue reconocida
   json_out(['ok'=>false,'error'=>'Acción no soportada: ' . $action],400);
 }
 
@@ -660,16 +705,9 @@ $rolTexto = $isSec ? 'Secretaría' : 'Médico';
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="csrf-token" content="<?= htmlspecialchars($csrf) ?>">
   
-  <!-- Utilidades de fechas -->
   <script src="../assets/js/turnos_utils.js"></script>
-  
-  <!-- Estilos base del admin -->
   <link rel="stylesheet" href="../assets/css/admin.css">
-  
-  <!-- Tema claro (opcional) -->
   <link rel="stylesheet" href="../assets/css/theme_light.css">
-  
-  <!-- Toggle de tema -->
   <script src="../assets/js/theme_toggle.js"></script>
 </head>
 <body>
@@ -679,7 +717,6 @@ $rolTexto = $isSec ? 'Secretaría' : 'Médico';
   <div class="who">👤 <?= htmlspecialchars($apellido.', '.$nombre) ?> — <?= $rolTexto ?></div>
   <nav class="actions">
     <?php if ($isMed): ?>
-      <!-- Botón para que el médico acceda a su panel -->
       <a class="btn primary" href="medico_panel.php" style="display:inline-flex;align-items:center;gap:6px">
         👨‍⚕️ Mi Panel Médico
       </a>
@@ -692,11 +729,11 @@ $rolTexto = $isSec ? 'Secretaría' : 'Médico';
 </header>
 
 <main class="wrap">
-  <div class="tabs" style="display:flex;gap:8px;margin-bottom:20px;border-bottom:2px solid var(--border);padding-bottom:10px">
-    <button class="tab active" data-tab="medicos" style="padding:10px 20px;background:var(--primary);color:#001219;border:none;border-radius:8px;font-weight:700;cursor:pointer">👨‍⚕️ Médicos</button>
-    <button class="tab" data-tab="secretarias" style="padding:10px 20px;background:transparent;color:var(--text);border:1px solid var(--border);border-radius:8px;font-weight:700;cursor:pointer">👩‍💼 Secretarias</button>
-    <button class="tab" data-tab="obras" style="padding:10px 20px;background:transparent;color:var(--text);border:1px solid var(--border);border-radius:8px;font-weight:700;cursor:pointer">🏥 Obras Sociales</button>
-    <button class="tab" data-tab="turnos" style="padding:10px 20px;background:transparent;color:var(--text);border:1px solid var(--border);border-radius:8px;font-weight:700;cursor:pointer">📅 Gestión de Turnos</button>
+  <div class="tabs">
+    <button class="tab active" data-tab="medicos">👨‍⚕️ Médicos</button>
+    <button class="tab" data-tab="secretarias">👩‍💼 Secretarias</button>
+    <button class="tab" data-tab="obras">🏥 Obras Sociales</button>
+    <button class="tab" data-tab="turnos">📅 Gestión de Turnos</button>
   </div>
 
   <!-- ===== MÉDICOS ===== -->
@@ -1225,9 +1262,9 @@ $rolTexto = $isSec ? 'Secretaría' : 'Médico';
     if (horarios && Array.isArray(horarios)) {
       horarios.forEach(h => {
         horariosEdit.push({
-          dia: h.Dia_semana,
-          inicio: h.Hora_inicio,
-          fin: h.Hora_fin
+          dia: h.Dia_semana || h.dia_semana,
+          inicio: h.Hora_inicio || h.hora_inicio,
+          fin: h.Hora_fin || h.hora_fin
         });
       });
     }
