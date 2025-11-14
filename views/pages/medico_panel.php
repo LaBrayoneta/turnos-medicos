@@ -40,11 +40,14 @@ $especialidad = $stmt->fetchColumn() ?: 'Sin especialidad';
 <!doctype html>
 <html lang="es">
 <head>
+    <link rel="stylesheet" href="<?= asset('css/index.css') ?>">
     <meta charset="utf-8">
     <title>Panel Médico - Dr. <?= htmlspecialchars($apellido) ?></title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="<?= htmlspecialchars($csrf) ?>">
     <link rel="stylesheet" href="../assets/css/medico_panel.css">
+     <link rel="stylesheet" href="<?= asset('css/theme_light.css') ?>">
+  <script src="<?= asset('js/theme_toggle.js') ?>"></script>
 </head>
 <body data-medico-id="<?= $medicoId ?>">
     <header class="hdr">

@@ -264,6 +264,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <!doctype html>
 <html lang="es">
 <head>
+    <link rel="stylesheet" href="<?= asset('css/index.css') ?>">
     <meta charset="utf-8">
     <title>Iniciar sesión - Turnos Médicos</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -378,6 +379,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             h1 { font-size: 24px; }
         }
     </style>
+    <link rel="stylesheet" href="<?= asset('css/theme_light.css') ?>">
+  <script src="<?= asset('js/theme_toggle.js') ?>"></script>
 </head>
 <body>
     <div class="container">

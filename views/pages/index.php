@@ -34,6 +34,8 @@ $api_base_url = controller('turnos_api.php');
 <!doctype html>
 <html lang="es">
 <head>
+   <!-- Tus estilos existentes -->
+  <link rel="stylesheet" href="<?= asset('css/index.css') ?>">
   <meta charset="utf-8">
   <title>Clínica Médica - Sistema de Turnos Online</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -45,6 +47,8 @@ $api_base_url = controller('turnos_api.php');
   </script>
   
   <link rel="stylesheet" href="<?= asset('css/index.css') ?>">
+  <link rel="stylesheet" href="<?= asset('css/theme_light.css') ?>">
+  <script src="<?= asset('js/theme_toggle.js') ?>"></script>
 </head>
 <body>
   <!-- Reemplazar el header en index.php con esto: -->

@@ -399,12 +399,15 @@ error_log("Rendering form with token: " . substr($csrf, 0, 20) . "...");
 <!doctype html>
 <html lang="es">
 <head>
+     <link rel="stylesheet" href="<?= asset('css/index.css') ?>">
     <meta charset="utf-8">
     <title>Crear cuenta - Clínica Médica</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="robots" content="noindex, nofollow">
     <link rel="stylesheet" href="../assets/css/register.css">
+     <link rel="stylesheet" href="<?= asset('css/theme_light.css') ?>">
+  <script src="<?= asset('js/theme_toggle.js') ?>"></script>
 </head>
 <body>
     <div class="container">
