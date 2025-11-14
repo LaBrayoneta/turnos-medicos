@@ -1,10 +1,10 @@
 <?php
 /**
- * login.php - VERSIÓN CORREGIDA (Validaciones arregladas)
- * Sincronizado con register.php
+ * login.php - VERSIÓN CORREGIDA
+ * ✅ Todas las columnas en minúsculas
  */
 ini_set('session.cookie_httponly', 1);
-ini_set('session.cookie_secure', 1);
+ini_set('session.cookie_secure', 0); // 0 para desarrollo local HTTP
 ini_set('session.use_only_cookies', 1);
 
 session_start();
@@ -100,9 +100,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
     
     $dni = sanitizeInput($_POST['dni'] ?? '');
-    $password = $_POST['password'] ?? ''; // NO sanitizar la contraseña
+    $password = $_POST['password'] ?? '';
     
-    // ✅ CORRECCIÓN: Validaciones básicas simplificadas
+    error_log("🔐 Login attempt - DNI: $dni from IP: $ip");
+    
+    // Validaciones básicas
     if (empty($dni)) {
         $error = 'El DNI es obligatorio';
     } elseif (empty($password)) {
@@ -113,14 +115,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($dniError) {
             $error = $dniError;
             sleep(2);
-        } 
-        // ✅ CORRECCIÓN: Solo validar longitud mínima real (sin máximo estricto aquí)
-        elseif (strlen($password) < 1 || strlen($password) > 255) {
-            // Rango amplio para no rechazar contraseñas válidas
+        } elseif (strlen($password) < 1 || strlen($password) > 255) {
             $error = 'Contraseña inválida';
             sleep(2);
         } else {
             try {
+                // ✅ CORRECCIÓN: Usar columnas en MINÚSCULAS
                 $stmt = $pdo->prepare("
                     SELECT 
                         u.Id_usuario, 
@@ -129,19 +129,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         u.dni, 
                         u.email, 
                         u.rol, 
-                        u.Contraseña as password,
+                        u.password,
                         u.failed_login_attempts,
                         u.account_locked_until,
                         CASE 
-                            WHEN m.Id_medico IS NOT NULL AND m.Activo = 1 THEN 1
+                            WHEN m.Id_medico IS NOT NULL AND m.activo = 1 THEN 1
                             ELSE 0
                         END AS is_medico_activo,
                         CASE 
-                            WHEN s.Id_secretaria IS NOT NULL AND s.Activo = 1 THEN 1
+                            WHEN s.Id_secretaria IS NOT NULL AND s.activo = 1 THEN 1
                             ELSE 0
                         END AS is_secretaria_activa,
                         CASE 
-                            WHEN p.Id_paciente IS NOT NULL AND p.Activo = 1 THEN 1
+                            WHEN p.Id_paciente IS NOT NULL AND p.activo = 1 THEN 1
                             ELSE 0
                         END AS is_paciente_activo
                     FROM usuario u
@@ -157,20 +157,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($user) {
                     $userId = (int)$user['Id_usuario'];
                     
+                    error_log("👤 Usuario encontrado: ID $userId, Rol: {$user['rol']}");
+                    
                     // Verificar bloqueo
                     if (isAccountLocked($user)) {
                         $remainingMinutes = ceil((strtotime($user['account_locked_until']) - time()) / 60);
                         $error = "Cuenta bloqueada temporalmente. Intenta nuevamente en {$remainingMinutes} minuto(s).";
-                        error_log("Locked account login attempt: User $userId from IP $ip");
+                        error_log("🔒 Locked account: User $userId from IP $ip");
                         sleep(2);
                     }
-                    // ✅ CORRECCIÓN: Verificar que exista un hash válido
+                    // Verificar que exista un hash válido
                     elseif (empty($user['password']) || strlen($user['password']) < 10) {
-                        error_log("Invalid or missing password hash for user $userId");
+                        error_log("❌ Invalid password hash for user $userId");
                         $error = 'Error en la cuenta. Contacta al administrador.';
                     }
-                    // ✅ Verificar contraseña con password_verify
+                    // Verificar contraseña
                     elseif (password_verify($password, $user['password'])) {
+                        error_log("✅ Password verified for user $userId");
+                        
                         // Verificar que el usuario tenga rol activo
                         $hasActiveRole = false;
                         $actualRole = '';
@@ -185,17 +189,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $hasActiveRole = true;
                             $actualRole = 'paciente';
                         } elseif ($user['rol'] === '' && $user['is_paciente_activo']) {
-                            // Usuario sin rol pero con paciente activo
                             $hasActiveRole = true;
                             $actualRole = 'paciente';
                         }
                         
                         if (!$hasActiveRole) {
                             $error = 'Usuario inactivo o sin rol asignado. Contacta al administrador.';
-                            error_log("Inactive user login attempt: User $userId, Rol: {$user['rol']}");
+                            error_log("❌ Inactive user: User $userId, Rol: {$user['rol']}");
                             sleep(2);
                         } else {
                             // ✅ LOGIN EXITOSO
+                            error_log("🎉 Login successful: User $userId ($actualRole)");
                             
                             // Resetear intentos fallidos
                             resetFailedAttempts($pdo, $userId);
@@ -221,8 +225,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             ");
                             $updateStmt->execute([$userId]);
 
-                            // Log exitoso
-                            error_log("Successful login: User $userId ($actualRole) from IP $ip");
+                            error_log("✅ Session created for user $userId");
 
                             // Redirigir según el rol
                             if ($actualRole === 'medico' || $actualRole === 'secretaria') {
@@ -234,6 +237,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         }
                     } else {
                         // Contraseña incorrecta
+                        error_log("❌ Wrong password for user $userId");
                         recordFailedAttempt($pdo, $userId);
                         
                         $remainingAttempts = 5 - ($user['failed_login_attempts'] + 1);
@@ -243,17 +247,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $error = "DNI o contraseña incorrectos. Tu cuenta ha sido bloqueada por 15 minutos.";
                         }
                         
-                        error_log("Password mismatch for user $userId from IP $ip");
                         sleep(rand(2, 4));
                     }
                 } else {
                     // Usuario no encontrado
                     $error = 'DNI o contraseña incorrectos';
-                    error_log("Login attempt for non-existent DNI: $dni from IP $ip");
+                    error_log("❌ DNI not found: $dni from IP $ip");
                     sleep(rand(2, 4));
                 }
             } catch (Throwable $e) {
-                error_log('Login error: ' . $e->getMessage());
+                error_log('❌ Login error: ' . $e->getMessage());
+                error_log('Stack trace: ' . $e->getTraceAsString());
                 $error = 'Error al procesar el inicio de sesión. Intenta nuevamente.';
                 sleep(2);
             }
@@ -378,8 +382,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             h1 { font-size: 24px; }
         }
     </style>
-    <link rel="stylesheet" href="../assets/css/theme_light.css">
-    <script src="../assets/js/theme_toggle.js"></script>
 </head>
 <body>
     <div class="container">
@@ -436,7 +438,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </div>
 
     <script>
-        // ✅ VALIDACIÓN JS SIMPLIFICADA - Sin restricciones excesivas
         (function() {
             'use strict';
 
@@ -449,7 +450,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 this.value = this.value.replace(/[^0-9]/g, '');
             });
 
-            // Validación básica del formulario
+            // Validación del formulario
             form?.addEventListener('submit', function(e) {
                 const dni = dniInput.value.trim();
                 const password = passwordInput.value;
@@ -474,8 +475,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     passwordInput.focus();
                     return false;
                 }
-
-                // ✅ No validar longitud aquí - dejar que el servidor lo maneje
                 
                 // Deshabilitar botón para evitar doble envío
                 const submitBtn = form.querySelector('button[type="submit"]');
@@ -484,6 +483,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     submitBtn.textContent = 'Iniciando sesión...';
                 }
             });
+
+            // Log para debug
+            console.log('🔐 Login form initialized');
         })();
     </script>
 </body>

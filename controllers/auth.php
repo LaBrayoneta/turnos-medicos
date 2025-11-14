@@ -1,22 +1,22 @@
 <?php
 /**
  * auth.php - API de autenticación
- * VERSIÓN MODERNIZADA Y SINCRONIZADA
+ * VERSIÓN COMPLETAMENTE CORREGIDA - Columnas en minúsculas
  */
 
-// ✅ Configuración de errores
+// Configuración de errores
 error_reporting(E_ALL);
 ini_set('display_errors', '0');
 ini_set('log_errors', '1');
 
-// ✅ Limpiar output buffer
+// Limpiar output buffer
 if (ob_get_level()) ob_end_clean();
 ob_start();
 
 session_start();
 require_once __DIR__ . '/../config/db.php';
 
-// ✅ Headers seguros
+// Headers seguros
 header('Content-Type: application/json; charset=utf-8');
 header('X-Content-Type-Options: nosniff');
 header('X-Frame-Options: DENY');
@@ -151,14 +151,14 @@ if ($action === 'register' && $_SERVER['REQUEST_METHOD'] === 'POST') {
 
         // Si eligió "Otra" obra social, crearla
         if ($idObra === -1 && !empty($obraOtra)) {
-            $stmt = $pdo->prepare("SELECT Id_obra_social FROM obra_social WHERE Nombre = ? LIMIT 1");
+            $stmt = $pdo->prepare("SELECT Id_obra_social FROM obra_social WHERE nombre = ? LIMIT 1");
             $stmt->execute([$obraOtra]);
             $existingId = $stmt->fetchColumn();
             
             if ($existingId) {
                 $idObra = (int)$existingId;
             } else {
-                $stmt = $pdo->prepare("INSERT INTO obra_social (Nombre, Activo) VALUES (?, 1)");
+                $stmt = $pdo->prepare("INSERT INTO obra_social (nombre, activo) VALUES (?, 1)");
                 $stmt->execute([$obraOtra]);
                 $idObra = (int)$pdo->lastInsertId();
             }
@@ -167,7 +167,7 @@ if ($action === 'register' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         // Hash de contraseña
         $passwordHash = password_hash($password, PASSWORD_BCRYPT, ['cost' => 12]);
 
-        // Insertar usuario
+        // ✅ CORRECCIÓN CRÍTICA: Usar nombres de columnas EN MINÚSCULAS
         $stmt = $pdo->prepare("
             INSERT INTO usuario (nombre, apellido, dni, email, password, rol, fecha_registro) 
             VALUES (?, ?, ?, ?, ?, 'paciente', NOW())
@@ -175,9 +175,9 @@ if ($action === 'register' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt->execute([$nombre, $apellido, $dni, $email, $passwordHash]);
         $userId = (int)$pdo->lastInsertId();
 
-        // Insertar paciente
+        // ✅ CORRECCIÓN: Columnas de paciente también en minúsculas
         $stmt = $pdo->prepare("
-            INSERT INTO paciente (Id_obra_social, Nro_carnet, Libreta_sanitaria, Id_usuario, Activo) 
+            INSERT INTO paciente (Id_obra_social, nro_carnet, libreta_sanitaria, Id_usuario, activo) 
             VALUES (?, ?, ?, ?, 1)
         ");
         $stmt->execute([
@@ -211,7 +211,7 @@ if ($action === 'register' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     } catch (Throwable $e) {
         if ($pdo->inTransaction()) $pdo->rollBack();
         error_log('Registration API error: ' . $e->getMessage());
-        json_out(['ok' => false, 'error' => 'Error al crear cuenta'], 500);
+        json_out(['ok' => false, 'error' => 'Error al crear cuenta: ' . $e->getMessage()], 500);
     }
 }
 
@@ -231,7 +231,7 @@ if ($action === 'login' && $_SERVER['REQUEST_METHOD'] === 'POST') {
             json_out(['ok' => false, 'error' => $dniError], 400);
         }
 
-        // Buscar usuario
+        // ✅ CORRECCIÓN: Usar nombres de columnas en minúsculas
         $stmt = $pdo->prepare("
             SELECT 
                 u.Id_usuario, 
@@ -242,9 +242,9 @@ if ($action === 'login' && $_SERVER['REQUEST_METHOD'] === 'POST') {
                 u.rol, 
                 u.password,
                 u.account_locked_until,
-                CASE WHEN p.Id_paciente IS NOT NULL AND p.Activo = 1 THEN 1 ELSE 0 END AS is_paciente_activo,
-                CASE WHEN m.Id_medico IS NOT NULL AND m.Activo = 1 THEN 1 ELSE 0 END AS is_medico_activo,
-                CASE WHEN s.Id_secretaria IS NOT NULL AND s.Activo = 1 THEN 1 ELSE 0 END AS is_secretaria_activa
+                CASE WHEN p.Id_paciente IS NOT NULL AND p.activo = 1 THEN 1 ELSE 0 END AS is_paciente_activo,
+                CASE WHEN m.Id_medico IS NOT NULL AND m.activo = 1 THEN 1 ELSE 0 END AS is_medico_activo,
+                CASE WHEN s.Id_secretaria IS NOT NULL AND s.activo = 1 THEN 1 ELSE 0 END AS is_secretaria_activa
             FROM usuario u
             LEFT JOIN paciente p ON p.Id_usuario = u.Id_usuario
             LEFT JOIN medico m ON m.Id_usuario = u.Id_usuario

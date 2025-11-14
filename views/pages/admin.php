@@ -658,11 +658,10 @@ $rolTexto = $isSec ? 'Secretaría' : 'Médico';
   <title>Panel Administrativo - Clínica</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="csrf-token" content="<?= htmlspecialchars($csrf) ?>">
-  <link rel="stylesheet" href="../assets/css/admin.css">
   <script src="../assets/js/turnos_utils.js"></script>
   <link rel="stylesheet" href="<?= asset('css/theme_light.css') ?>">
   <script src="<?= asset('js/theme_toggle.js') ?>"></script>
-  <link rel="stylesheet" href="../assets/css/admin.css">
+    <link rel="stylesheet" href="../assets/css/admin.css">
 </head>
 <body>
 
