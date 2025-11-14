@@ -511,33 +511,3 @@ textarea {
   }
 }
 
-/* ===================================
-   Agregar al final de tu CSS principal
-   (index.css, admin.css, etc.)
-   Efecto especial para botón en MODO OSCURO
-   =================================== */
-
-/* MODO OSCURO - Botón con luna 🌙 tiene efecto amarillo brillante */
-[data-theme="dark"] .theme-toggle,
-.theme-toggle {
-  position: relative;
-  overflow: visible;
-}
-
-[data-theme="dark"] .theme-toggle:hover,
-body:not([data-theme="light"]) .theme-toggle:hover {
-  background: linear-gradient(135deg, #fffde7 0%, #fff9c4 100%);
-  border-color: #fbc02d;
-  transform: scale(1.15) rotate(-20deg);
-  box-shadow: 0 4px 20px rgba(251, 192, 45, 0.4);
-  color: #f57f17;
-}
-
-/* MODO CLARO - Botón con sol ☀️ tiene efecto azul suave */
-[data-theme="light"] .theme-toggle:hover {
-  background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
-  border-color: #1976d2;
-  transform: scale(1.1);
-  box-shadow: 0 4px 15px rgba(25, 118, 210, 0.3);
-  color: #1976d2;
-}

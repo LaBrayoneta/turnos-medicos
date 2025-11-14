@@ -1,413 +1,371 @@
 <?php
-/**
- * register.php - Registro de usuarios
- * VERSIÓN CORREGIDA - Token CSRF arreglado
- */
-
-// ✅ Configuración de seguridad (ANTES de session_start)
-ini_set('session.cookie_httponly', 1);
-ini_set('session.cookie_secure', 1);
-ini_set('session.use_only_cookies', 1);
-
 session_start();
 require_once __DIR__ . '/../../config/db.php';
 
-$pdo = db();
-$errors = [];
-
-// ✅ CORRECCIÓN: Generar token CSRF SOLO UNA VEZ
-// Si ya existe un token en la sesión, usarlo. Si no, crear uno nuevo.
 if (empty($_SESSION['csrf_token'])) {
     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 }
 $csrf = $_SESSION['csrf_token'];
 
-// ✅ Lista de contraseñas comunes ampliada
-$commonPasswords = [
-    'password', '123456', '12345678', 'qwerty', 'abc123',
-    'password123', '111111', '123123', 'admin', 'letmein',
-    'welcome', 'monkey', '1234567', 'dragon', 'master',
-    'iloveyou', 'princess', 'starwars', 'superman', 'batman',
-    '654321', '696969', 'trustno1', 'michael', 'jennifer'
-];
+$pdo = db();
+$errors = [];
 
-// ✅ Dominios de email desechables
-$disposableEmailDomains = [
-    'tempmail.com', '10minutemail.com', 'guerrillamail.com',
-    'mailinator.com', 'throwaway.email', 'temp-mail.org',
-    'maildrop.cc', 'yopmail.com', 'fakeinbox.com', 'trashmail.com'
-];
-
-// ========== FUNCIONES DE VALIDACIÓN ==========
-
-function sanitizeInput($data) {
-    return htmlspecialchars(trim(stripslashes($data)), ENT_QUOTES, 'UTF-8');
-}
-
-function validateDNI($dni) {
-    if (!ctype_digit($dni)) {
-        return 'El DNI debe contener solo números';
-    }
-    
-    $len = strlen($dni);
-    if ($len < 7 || $len > 10) {
-        return 'El DNI debe tener entre 7 y 10 dígitos';
-    }
-    
-    if (preg_match('/^(\d)\1+$/', $dni)) {
-        return 'El DNI no puede tener todos los dígitos iguales';
-    }
-    
-    $dniNum = intval($dni);
-    if ($dniNum < 1000000 || $dniNum > 99999999) {
-        return 'El DNI está fuera del rango válido';
-    }
-    
-    return null;
-}
-
-function validateName($name, $fieldName) {
-    $name = trim($name);
-    
-    if (empty($name)) {
-        return "El $fieldName es obligatorio";
-    }
-    
-    if (mb_strlen($name) < 2) {
-        return "El $fieldName debe tener al menos 2 caracteres";
-    }
-    
-    if (mb_strlen($name) > 50) {
-        return "El $fieldName no puede tener más de 50 caracteres";
-    }
-    
-    if (!preg_match('/^[\p{L}\s\'-]+$/u', $name)) {
-        return "El $fieldName solo puede contener letras, espacios, guiones y apóstrofes";
-    }
-    
-    if (preg_match('/\d/', $name)) {
-        return "El $fieldName no puede contener números";
-    }
-    
-    if (preg_match('/\s{2,}/', $name)) {
-        return "El $fieldName no puede tener espacios consecutivos";
-    }
-    
-    if (preg_match('/^[-\'\s]|[-\'\s]$/', $name)) {
-        return "El $fieldName no puede empezar o terminar con caracteres especiales";
-    }
-    
-    return null;
-}
-
-function validateEmail($email, $disposableEmailDomains) {
-    $email = strtolower(trim($email));
-    
-    if (empty($email)) {
-        return 'El email es obligatorio';
-    }
-    
-    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-        return 'El formato del email no es válido';
-    }
-    
-    if (strlen($email) > 255) {
-        return 'El email es demasiado largo';
-    }
-    
-    $parts = explode('@', $email);
-    if (count($parts) !== 2) {
-        return 'Formato de email inválido';
-    }
-    
-    $domain = $parts[1];
-    if (in_array($domain, $disposableEmailDomains)) {
-        return 'No se permiten emails temporales o desechables';
-    }
-    
-    if (substr_count($email, '@') > 1) {
-        return 'Email inválido';
-    }
-    
-    if (strpos($email, '..') !== false) {
-        return 'El email no puede tener puntos consecutivos';
-    }
-    
-    $localPart = $parts[0];
-    if ($localPart[0] === '.' || $localPart[strlen($localPart) - 1] === '.') {
-        return 'El email no puede empezar o terminar con punto';
-    }
-    
-    return null;
-}
-
-function validatePassword($password, $commonPasswords) {
-    if (empty($password)) {
-        return 'La contraseña es obligatoria';
-    }
-    
-    $len = strlen($password);
-    
-    if ($len < 8) {
-        return 'La contraseña debe tener al menos 8 caracteres';
-    }
-    
-    if ($len > 128) {
-        return 'La contraseña no puede exceder 128 caracteres';
-    }
-    
-    if (!preg_match('/[A-Z]/', $password)) {
-        return 'La contraseña debe contener al menos una mayúscula';
-    }
-    
-    if (!preg_match('/[a-z]/', $password)) {
-        return 'La contraseña debe contener al menos una minúscula';
-    }
-    
-    if (!preg_match('/[0-9]/', $password)) {
-        return 'La contraseña debe contener al menos un número';
-    }
-    
-    $lowerPassword = strtolower($password);
-    foreach ($commonPasswords as $common) {
-        if (stripos($lowerPassword, $common) !== false) {
-            return 'La contraseña es demasiado común. Elegí una más segura';
-        }
-    }
-    
-    if (strpos($password, ' ') !== false) {
-        return 'La contraseña no puede contener espacios';
-    }
-    
-    if (ctype_digit($password) || ctype_alpha($password)) {
-        return 'La contraseña debe combinar letras y números';
-    }
-    
-    return null;
-}
-
-function detectInjectionPatterns($input) {
-    $patterns = [
-        '/(\bOR\b|\bAND\b|\bUNION\b|\bSELECT\b|\bDROP\b|\bINSERT\b|\bDELETE\b|\bUPDATE\b)/i',
-        '/--|\/\*|\*\//',
-        '/<script|javascript:|onerror=|onload=/i',
-    ];
-    
-    foreach ($patterns as $pattern) {
-        if (preg_match($pattern, $input)) {
-            return true;
-        }
-    }
-    
-    return false;
-}
-
-// ✅ Cargar obras sociales activas
+// Cargar obras sociales activas desde la BD
 $obras_sociales = [];
 try {
     $stmt = $pdo->query("SELECT Id_obra_social, Nombre FROM obra_social WHERE Activo=1 ORDER BY Nombre");
     $obras_sociales = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Throwable $e) {
-    error_log('Error loading obras sociales: ' . $e->getMessage());
     $obras_sociales = [];
 }
 
-// ========== PROCESAR FORMULARIO ==========
-
+// Procesar formulario
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // ✅ DEBUG COMPLETO
-    error_log("=== REGISTER DEBUG ===");
-    error_log("POST data keys: " . implode(', ', array_keys($_POST)));
-    error_log("Session token exists: " . (isset($_SESSION['csrf_token']) ? 'YES' : 'NO'));
-    error_log("Session token: " . substr($_SESSION['csrf_token'] ?? 'NONE', 0, 20) . "...");
-    error_log("POST token: " . substr($_POST['csrf_token'] ?? 'NONE', 0, 20) . "...");
-    
     $token = $_POST['csrf_token'] ?? '';
-    
-    // ✅ TEMPORALMENTE DESHABILITAR VERIFICACIÓN CSRF PARA TESTING
-    // (Remover esto una vez que funcione)
-    $csrfValid = true;
-    
-    if (empty($token)) {
-        error_log("ERROR: Token faltante en POST");
-        // $errors[] = 'Token de seguridad faltante. Recarga la página e intenta nuevamente.';
-        // $csrfValid = false;
-    } elseif (!hash_equals($csrf, $token)) {
-        error_log("ERROR: Token mismatch - Session: " . $csrf . " vs POST: " . $token);
-        // $errors[] = 'Token de seguridad inválido. Recarga la página e intenta nuevamente.';
-        // $csrfValid = false;
+    if (!$token || !hash_equals($csrf, $token)) {
+        $errors[] = 'Token de seguridad inválido';
     }
-    
-    if ($csrfValid) {
-        // ✅ Sanitizar entradas
-        $dni      = sanitizeInput($_POST['dni'] ?? '');
-        $nombre   = sanitizeInput($_POST['nombre'] ?? '');
-        $apellido = sanitizeInput($_POST['apellido'] ?? '');
-        $email    = strtolower(sanitizeInput($_POST['email'] ?? ''));
-        $password = $_POST['password'] ?? '';
-        $password2 = $_POST['password2'] ?? '';
-        $idObra   = (int)($_POST['id_obra_social'] ?? 0);
-        $obraOtra = sanitizeInput($_POST['obra_social_otra'] ?? '');
-        $nroCarnet = sanitizeInput($_POST['nro_carnet'] ?? '');
-        $libreta  = sanitizeInput($_POST['libreta_sanitaria'] ?? '');
 
-        // ✅ Validaciones
-        $dniError = validateDNI($dni);
-        if ($dniError) {
-            $errors[] = $dniError;
+    $dni      = trim($_POST['dni'] ?? '');
+    $nombre   = trim($_POST['nombre'] ?? '');
+    $apellido = trim($_POST['apellido'] ?? '');
+    $email    = trim($_POST['email'] ?? '');
+    $password = $_POST['password'] ?? '';
+    $password2 = $_POST['password2'] ?? '';
+    $idObra   = (int)($_POST['id_obra_social'] ?? 0);
+    $obraOtra = trim($_POST['obra_social_otra'] ?? '');
+    $nroCarnet = trim($_POST['nro_carnet'] ?? '');
+    $libreta  = trim($_POST['libreta_sanitaria'] ?? '');
+
+    // Validaciones
+    if (empty($dni)) {
+    $errors[] = 'El DNI es obligatorio';
+} elseif (!filter_var($dni, FILTER_VALIDATE_INT, [
+    'options' => ['min_range' => 1000000, 'max_range' => 99999999999]
+])) {
+    $errors[] = 'El DNI debe ser un número válido entre 7 y 11 dígitos';
+}
+
+  if (empty($nombre)) {
+    $errors[] = 'El nombre es obligatorio';
+} elseif (mb_strlen($nombre) < 2 || mb_strlen($nombre) > 50) {
+    $errors[] = 'El nombre debe tener entre 2 y 50 caracteres';
+} elseif (!preg_match('/^[\p{L}\s\'-]+$/u', $nombre)) {
+    $errors[] = 'El nombre contiene caracteres no válidos';
+    }
+
+   if (empty($apellido)) {
+    $errors[] = 'El apellido es obligatorio';
+} elseif (mb_strlen($apellido) < 2 || mb_strlen($apellido) > 50) {
+    $errors[] = 'El apellido debe tener entre 2 y 50 caracteres';
+} elseif (!preg_match('/^[\p{L}\s\'-]+$/u', $apellido)) {
+    $errors[] = 'El apellido contiene caracteres no válidos';
+}
+
+    if (empty($email)) {
+    $errors[] = 'El email es obligatorio';
+} elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+    $errors[] = 'El formato del email es inválido';
+} elseif (!checkdnsrr(substr(strrchr($email, "@"), 1), "MX")) {
+    $errors[] = 'El dominio del email no existe';
+}
+
+    if (empty($password)) {
+    $errors[] = 'La contraseña es obligatoria';
+} elseif (strlen($password) < 8) {
+    $errors[] = 'La contraseña debe tener al menos 8 caracteres';
+} elseif (!preg_match('/[A-Z]/', $password)) {
+    $errors[] = 'La contraseña debe contener al menos una mayúscula';
+} elseif (!preg_match('/[a-z]/', $password)) {
+    $errors[] = 'La contraseña debe contener al menos una minúscula';
+} elseif (!preg_match('/[0-9]/', $password)) {
+    $errors[] = 'La contraseña debe contener al menos un número';
+}
+
+    // Validar obra social
+    if ($idObra === -1) {
+        // Usuario eligió "Otra"
+        if (empty($obraOtra)) {
+            $errors[] = 'Debes especificar el nombre de la obra social';
         }
+    } elseif ($idObra <= 0) {
+        $errors[] = 'Debes seleccionar una obra social';
+    }
 
-        $nombreError = validateName($nombre, 'nombre');
-        if ($nombreError) {
-            $errors[] = $nombreError;
-        }
+    if (empty($libreta)) {
+        $errors[] = 'La libreta sanitaria es obligatoria';
+    }
 
-        $apellidoError = validateName($apellido, 'apellido');
-        if ($apellidoError) {
-            $errors[] = $apellidoError;
-        }
+    // Procesar registro
+    if (empty($errors)) {
+        try {
+            $pdo->beginTransaction();
 
-        $emailError = validateEmail($email, $disposableEmailDomains);
-        if ($emailError) {
-            $errors[] = $emailError;
-        }
-
-        $passwordError = validatePassword($password, $commonPasswords);
-        if ($passwordError) {
-            $errors[] = $passwordError;
-        }
-
-        if ($password !== $password2) {
-            $errors[] = 'Las contraseñas no coinciden';
-        }
-
-        $fieldsToCheck = [$dni, $nombre, $apellido, $email, $obraOtra, $nroCarnet, $libreta];
-        foreach ($fieldsToCheck as $field) {
-            if (detectInjectionPatterns($field)) {
-                $errors[] = 'Se detectó un patrón de entrada inválido';
-                error_log("Injection attempt in registration from IP: " . ($_SERVER['REMOTE_ADDR'] ?? 'unknown'));
-                break;
+            $stmt = $pdo->prepare("SELECT COUNT(*) FROM usuario WHERE email = ? OR dni = ?");
+            $stmt->execute([$email, $dni]);
+            
+            if ($stmt->fetchColumn() > 0) {
+                throw new Exception('El email o DNI ya están registrados');
             }
-        }
 
-        if ($idObra === -1) {
-            if (empty($obraOtra)) {
-                $errors[] = 'Debes especificar el nombre de la obra social';
-            } elseif (mb_strlen($obraOtra) < 3) {
-                $errors[] = 'El nombre de la obra social debe tener al menos 3 caracteres';
-            } elseif (mb_strlen($obraOtra) > 100) {
-                $errors[] = 'El nombre de la obra social es demasiado largo';
-            }
-        } elseif ($idObra <= 0) {
-            $errors[] = 'Debes seleccionar una obra social';
-        }
-
-        if (empty($libreta)) {
-            $errors[] = 'La libreta sanitaria es obligatoria';
-        } elseif (mb_strlen($libreta) < 3) {
-            $errors[] = 'La libreta sanitaria debe tener al menos 3 caracteres';
-        } elseif (mb_strlen($libreta) > 50) {
-            $errors[] = 'La libreta sanitaria es demasiado larga';
-        }
-
-        if (!empty($nroCarnet) && mb_strlen($nroCarnet) > 50) {
-            $errors[] = 'El número de carnet es demasiado largo';
-        }
-
-        // ✅ Procesar registro si no hay errores
-        if (empty($errors)) {
-            try {
-                $pdo->beginTransaction();
-
-                $stmt = $pdo->prepare("SELECT COUNT(*) FROM usuario WHERE email = ? OR dni = ?");
-                $stmt->execute([$email, $dni]);
+            // Si eligió "Otra", crear la nueva obra social
+            if ($idObra === -1 && !empty($obraOtra)) {
+                // Verificar si ya existe
+                $stmt = $pdo->prepare("SELECT Id_obra_social FROM obra_social WHERE Nombre = ? LIMIT 1");
+                $stmt->execute([$obraOtra]);
+                $existingId = $stmt->fetchColumn();
                 
-                if ($stmt->fetchColumn() > 0) {
-                    throw new Exception('El email o DNI ya están registrados');
-                }
-
-                if ($idObra === -1 && !empty($obraOtra)) {
-                    $stmt = $pdo->prepare("SELECT Id_obra_social FROM obra_social WHERE Nombre = ? LIMIT 1");
+                if ($existingId) {
+                    $idObra = (int)$existingId;
+                } else {
+                    // Crear nueva obra social
+                    $stmt = $pdo->prepare("INSERT INTO obra_social (Nombre, Activo) VALUES (?, 1)");
                     $stmt->execute([$obraOtra]);
-                    $existingId = $stmt->fetchColumn();
-                    
-                    if ($existingId) {
-                        $idObra = (int)$existingId;
-                    } else {
-                        $stmt = $pdo->prepare("INSERT INTO obra_social (Nombre, Activo) VALUES (?, 1)");
-                        $stmt->execute([$obraOtra]);
-                        $idObra = (int)$pdo->lastInsertId();
-                    }
+                    $idObra = (int)$pdo->lastInsertId();
                 }
-
-                $passwordHash = password_hash($password, PASSWORD_BCRYPT, ['cost' => 12]);
-
-                $stmtUser = $pdo->prepare("
-                    INSERT INTO usuario (Nombre, Apellido, dni, email, Contraseña, Rol, Fecha_Registro) 
-                    VALUES (?, ?, ?, ?, ?, 'paciente', NOW())
-                ");
-                $stmtUser->execute([$nombre, $apellido, $dni, $email, $passwordHash]);
-                $userId = (int)$pdo->lastInsertId();
-
-                $stmtPaciente = $pdo->prepare("
-                    INSERT INTO paciente (Id_obra_social, Nro_carnet, Libreta_sanitaria, Id_usuario, Activo) 
-                    VALUES (?, ?, ?, ?, 1)
-                ");
-                $stmtPaciente->execute([
-                    $idObra > 0 ? $idObra : null, 
-                    !empty($nroCarnet) ? $nroCarnet : null, 
-                    $libreta, 
-                    $userId
-                ]);
-
-                $pdo->commit();
-
-                error_log("New user registered: ID $userId, DNI $dni");
-
-                // ✅ Login automático
-                session_regenerate_id(true);
-                
-                // ✅ IMPORTANTE: Regenerar token CSRF después del login
-                $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-                
-                $_SESSION['Id_usuario'] = $userId;
-                $_SESSION['dni'] = $dni;
-                $_SESSION['email'] = $email;
-                $_SESSION['Nombre'] = $nombre;
-                $_SESSION['Apellido'] = $apellido;
-                $_SESSION['Rol'] = 'paciente';
-                $_SESSION['login_time'] = time();
-                $_SESSION['ip_address'] = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
-
-                header('Location: index.php');
-                exit;
-
-            } catch (Throwable $e) {
-                if ($pdo->inTransaction()) {
-                    $pdo->rollBack();
-                }
-                error_log('Registration error: ' . $e->getMessage());
-                $errors[] = 'Error al crear la cuenta: ' . $e->getMessage();
             }
-        } // Cierre del if $csrfValid
-    } // Cierre del else de validaciones
-} // Cierre del if POST
 
-// ✅ DEBUG: Verificar que el token existe al renderizar
-error_log("Rendering form with token: " . substr($csrf, 0, 20) . "...");
+            $passwordHash = password_hash($password, PASSWORD_BCRYPT, ['cost' => 12]);
+
+            $stmtUser = $pdo->prepare("
+                INSERT INTO usuario (Nombre, Apellido, dni, email, Contraseña, Rol) 
+                VALUES (?, ?, ?, ?, ?, 'paciente')
+            ");
+            $stmtUser->execute([$nombre, $apellido, $dni, $email, $passwordHash]);
+            $userId = (int)$pdo->lastInsertId();
+
+            $stmtPaciente = $pdo->prepare("
+                INSERT INTO paciente (Id_obra_social, Nro_carnet, Libreta_sanitaria, Id_usuario, Activo) 
+                VALUES (?, ?, ?, ?, 1)
+            ");
+            $stmtPaciente->execute([
+                $idObra > 0 ? $idObra : null, 
+                $nroCarnet !== '' ? $nroCarnet : null, 
+                $libreta, 
+                $userId
+            ]);
+
+            $pdo->commit();
+
+            // Login automático
+            $_SESSION['Id_usuario'] = $userId;
+            $_SESSION['dni'] = $dni;
+            $_SESSION['email'] = $email;
+            $_SESSION['Nombre'] = $nombre;
+            $_SESSION['Apellido'] = $apellido;
+            $_SESSION['Rol'] = 'paciente';
+
+            session_regenerate_id(true);
+
+            header('Location: index.php');
+            exit;
+
+        } catch (Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            $errors[] = $e->getMessage();
+        }
+    }
+}
 ?>
 <!doctype html>
 <html lang="es">
 <head>
-     <link rel="stylesheet" href="<?= asset('css/index.css') ?>">
     <meta charset="utf-8">
     <title>Crear cuenta - Clínica Médica</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta http-equiv="X-UA-Compatible" content="IE=edge">
-    <meta name="robots" content="noindex, nofollow">
-    <link rel="stylesheet" href="../assets/css/register.css">
-     <link rel="stylesheet" href="<?= asset('css/theme_light.css') ?>">
-  <script src="<?= asset('js/theme_toggle.js') ?>"></script>
+    <meta name="csrf-token" content="<?= htmlspecialchars($csrf, ENT_QUOTES, 'UTF-8') ?>">
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: system-ui, -apple-system, Arial, sans-serif;
+            background: linear-gradient(135deg, #0b1220 0%, #1a2332 100%);
+            color: #e5e7eb;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 560px;
+            width: 100%;
+        }
+
+        .card {
+            background: #111827;
+            border: 1px solid #1f2937;
+            border-radius: 16px;
+            padding: 32px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+        }
+
+        h1 {
+            color: #22d3ee;
+            margin-bottom: 8px;
+            font-size: 28px;
+        }
+
+        .subtitle {
+            color: #94a3b8;
+            margin-bottom: 24px;
+            font-size: 14px;
+        }
+
+        .errors {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid #ef4444;
+            border-radius: 10px;
+            padding: 12px;
+            margin-bottom: 20px;
+        }
+
+        .errors ul {
+            list-style: none;
+            padding: 0;
+        }
+
+        .errors li {
+            color: #ef4444;
+            font-size: 14px;
+            padding: 4px 0;
+        }
+
+        .errors li:before {
+            content: "⚠️ ";
+            margin-right: 6px;
+        }
+
+        .field {
+            margin-bottom: 16px;
+        }
+
+        .field.hidden {
+            display: none;
+        }
+
+        label {
+            display: block;
+            color: #94a3b8;
+            font-size: 14px;
+            font-weight: 500;
+            margin-bottom: 6px;
+        }
+
+        label .required {
+            color: #ef4444;
+        }
+
+        input, select {
+            width: 100%;
+            padding: 12px;
+            background: #0b1220;
+            border: 1px solid #1f2937;
+            border-radius: 10px;
+            color: #e5e7eb;
+            font-size: 15px;
+            transition: all 0.2s;
+        }
+
+        input:focus, select:focus {
+            outline: none;
+            border-color: #22d3ee;
+            box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.1);
+        }
+
+        input::placeholder {
+            color: #6b7280;
+        }
+
+        select {
+            cursor: pointer;
+        }
+
+        select option {
+            background: #111827;
+            color: #e5e7eb;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 14px;
+            background: #22d3ee;
+            color: #001219;
+            border: none;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-top: 8px;
+        }
+
+        .btn:hover {
+            background: #0891b2;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(34, 211, 238, 0.3);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .footer {
+            text-align: center;
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid #1f2937;
+        }
+
+        .footer a {
+            color: #22d3ee;
+            text-decoration: none;
+            font-weight: 500;
+        }
+
+        .footer a:hover {
+            text-decoration: underline;
+        }
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
+        @media (max-width: 600px) {
+            .card {
+                padding: 24px;
+            }
+
+            .grid-2 {
+                grid-template-columns: 1fr;
+            }
+
+            h1 {
+                font-size: 24px;
+            }
+        }
+
+        .password-strength {
+            font-size: 12px;
+            margin-top: 4px;
+            color: #94a3b8;
+        }
+
+        .hint {
+            font-size: 12px;
+            color: #6b7280;
+            margin-top: 4px;
+        }
+    </style>
 </head>
 <body>
     <div class="container">
@@ -426,19 +384,7 @@ error_log("Rendering form with token: " . substr($csrf, 0, 20) . "...");
             <?php endif; ?>
 
             <form method="post" action="register.php" id="registerForm" autocomplete="on">
-                <!-- ✅ Token CSRF con verificación visual -->
-                <input type="hidden" name="csrf_token" id="csrf_token" value="<?= htmlspecialchars($csrf, ENT_QUOTES, 'UTF-8') ?>">
-                
-                <?php if (!empty($csrf)): ?>
-                    <!-- DEBUG: Mostrar que el token existe -->
-                    <div style="font-size: 10px; color: #6b7280; margin-bottom: 10px; padding: 4px; background: #0b1220; border-radius: 4px;">
-                        ✓ Token de seguridad cargado (<?= substr($csrf, 0, 8) ?>...)
-                    </div>
-                <?php else: ?>
-                    <div style="font-size: 12px; color: #ef4444; margin-bottom: 10px; padding: 8px; background: rgba(239, 68, 68, 0.1); border-radius: 4px;">
-                        ⚠️ ERROR: Token no generado - Recarga la página
-                    </div>
-                <?php endif; ?>
+                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf, ENT_QUOTES, 'UTF-8') ?>">
 
                 <div class="grid-2">
                     <div class="field">
@@ -449,7 +395,6 @@ error_log("Rendering form with token: " . substr($csrf, 0, 20) . "...");
                             name="nombre" 
                             value="<?= htmlspecialchars($_POST['nombre'] ?? '', ENT_QUOTES, 'UTF-8') ?>"
                             placeholder="Juan"
-                            maxlength="50"
                             autocomplete="given-name"
                             required
                         >
@@ -463,7 +408,6 @@ error_log("Rendering form with token: " . substr($csrf, 0, 20) . "...");
                             name="apellido" 
                             value="<?= htmlspecialchars($_POST['apellido'] ?? '', ENT_QUOTES, 'UTF-8') ?>"
                             placeholder="Pérez"
-                            maxlength="50"
                             autocomplete="family-name"
                             required
                         >
@@ -494,11 +438,9 @@ error_log("Rendering form with token: " . substr($csrf, 0, 20) . "...");
                         name="email" 
                         value="<?= htmlspecialchars($_POST['email'] ?? '', ENT_QUOTES, 'UTF-8') ?>"
                         placeholder="tu@email.com"
-                        maxlength="255"
                         autocomplete="email"
                         required
                     >
-                    <div class="hint">No uses emails temporales</div>
                 </div>
 
                 <div class="field">
@@ -526,8 +468,8 @@ error_log("Rendering form with token: " . substr($csrf, 0, 20) . "...");
                         name="obra_social_otra" 
                         value="<?= htmlspecialchars($_POST['obra_social_otra'] ?? '', ENT_QUOTES, 'UTF-8') ?>"
                         placeholder="Ej: IOSPER, OSECAC, etc."
-                        maxlength="100"
                     >
+                    <div class="hint">Ingresá el nombre completo de tu obra social</div>
                 </div>
 
                 <div class="field">
@@ -538,9 +480,8 @@ error_log("Rendering form with token: " . substr($csrf, 0, 20) . "...");
                         name="nro_carnet" 
                         value="<?= htmlspecialchars($_POST['nro_carnet'] ?? '', ENT_QUOTES, 'UTF-8') ?>"
                         placeholder="Ej: 123456789"
-                        maxlength="50"
                     >
-                    <div class="hint">Opcional</div>
+                    <div class="hint">Opcional - Si tenés obra social, ingresá tu número de carnet</div>
                 </div>
 
                 <div class="field">
@@ -551,7 +492,6 @@ error_log("Rendering form with token: " . substr($csrf, 0, 20) . "...");
                         name="libreta_sanitaria" 
                         value="<?= htmlspecialchars($_POST['libreta_sanitaria'] ?? '', ENT_QUOTES, 'UTF-8') ?>"
                         placeholder="Número o identificación"
-                        maxlength="50"
                         required
                     >
                 </div>
@@ -562,10 +502,9 @@ error_log("Rendering form with token: " . substr($csrf, 0, 20) . "...");
                         type="password" 
                         id="password" 
                         name="password" 
-                        placeholder="Mínimo 8 caracteres, con mayúsculas y números"
+                        placeholder="Mínimo 6 caracteres"
                         autocomplete="new-password"
-                        minlength="8"
-                        maxlength="128"
+                        minlength="6"
                         required
                     >
                     <div class="password-strength" id="strengthMsg"></div>
@@ -579,8 +518,7 @@ error_log("Rendering form with token: " . substr($csrf, 0, 20) . "...");
                         name="password2" 
                         placeholder="Repetí tu contraseña"
                         autocomplete="new-password"
-                        minlength="8"
-                        maxlength="128"
+                        minlength="6"
                         required
                     >
                 </div>
@@ -596,28 +534,105 @@ error_log("Rendering form with token: " . substr($csrf, 0, 20) . "...");
     </div>
 
     <script>
-        // ✅ VERIFICACIÓN ADICIONAL: Asegurar que el token se envía
-        document.addEventListener('DOMContentLoaded', function() {
-            const form = document.getElementById('registerForm');
-            const tokenInput = document.getElementById('csrf_token');
-            
-            console.log('🔐 CSRF Token en formulario:', tokenInput ? tokenInput.value.substring(0, 10) + '...' : 'NO ENCONTRADO');
-            
-            form.addEventListener('submit', function(e) {
-                const tokenValue = tokenInput ? tokenInput.value : '';
-                
-                if (!tokenValue || tokenValue.length < 10) {
-                    e.preventDefault();
-                    alert('⚠️ ERROR CRÍTICO: Token de seguridad inválido.\n\nRecarga la página (F5) e intenta nuevamente.');
-                    console.error('Token inválido al enviar:', tokenValue);
-                    return false;
-                }
-                
-                console.log('✅ Enviando formulario con token:', tokenValue.substring(0, 10) + '...');
-                console.log('📦 Datos del formulario:', new FormData(form));
-            });
+    (function() {
+        'use strict';
+
+        const form = document.getElementById('registerForm');
+        const password = document.getElementById('password');
+        const password2 = document.getElementById('password2');
+        const strengthMsg = document.getElementById('strengthMsg');
+        const obraSelect = document.getElementById('id_obra_social');
+        const fieldOtraObra = document.getElementById('fieldObraOtra');
+        const otraObraInput = document.getElementById('obra_social_otra');
+
+        // Mostrar/ocultar campo "Otra obra social"
+        obraSelect?.addEventListener('change', function() {
+            if (this.value === '-1') {
+                fieldOtraObra.classList.remove('hidden');
+                otraObraInput.setAttribute('required', 'required');
+            } else {
+                fieldOtraObra.classList.add('hidden');
+                otraObraInput.removeAttribute('required');
+                otraObraInput.value = '';
+            }
         });
+
+        // Ejecutar al cargar si ya estaba seleccionado
+        if (obraSelect && obraSelect.value === '-1') {
+            fieldOtraObra.classList.remove('hidden');
+            otraObraInput.setAttribute('required', 'required');
+        }
+
+        // Validar fortaleza de contraseña
+        password?.addEventListener('input', function() {
+            const val = this.value;
+            const len = val.length;
+
+            if (len === 0) {
+                strengthMsg.textContent = '';
+                strengthMsg.style.color = '#94a3b8';
+                return;
+            }
+
+            if (len < 6) {
+                strengthMsg.textContent = '⚠️ Muy corta (mínimo 6 caracteres)';
+                strengthMsg.style.color = '#ef4444';
+            } else if (len < 8) {
+                strengthMsg.textContent = '🟡 Débil';
+                strengthMsg.style.color = '#fb923c';
+            } else if (len < 12) {
+                strengthMsg.textContent = '🟢 Buena';
+                strengthMsg.style.color = '#10b981';
+            } else {
+                strengthMsg.textContent = '🔒 Excelente';
+                strengthMsg.style.color = '#22d3ee';
+            }
+        });
+
+        // Validar coincidencia de contraseñas
+        password2?.addEventListener('input', function() {
+            if (this.value && password.value !== this.value) {
+                this.setCustomValidity('Las contraseñas no coinciden');
+            } else {
+                this.setCustomValidity('');
+            }
+        });
+
+        // Validación del formulario antes de enviar
+        form?.addEventListener('submit', function(e) {
+            // DNI solo números
+            const dni = document.getElementById('dni').value.trim();
+            if (!/^[0-9]{7,10}$/.test(dni)) {
+                e.preventDefault();
+                alert('⚠️ El DNI debe tener entre 7 y 10 dígitos numéricos');
+                return false;
+            }
+
+            // Validar que las contraseñas coincidan
+            if (password.value !== password2.value) {
+                e.preventDefault();
+                alert('⚠️ Las contraseñas no coinciden');
+                return false;
+            }
+
+            // Validar obra social "Otra"
+            if (obraSelect.value === '-1' && otraObraInput.value.trim() === '') {
+                e.preventDefault();
+                alert('⚠️ Debes especificar el nombre de tu obra social');
+                otraObraInput.focus();
+                return false;
+            }
+
+            // Todo OK
+            return true;
+        });
+
+        // Solo números en DNI
+        document.getElementById('dni')?.addEventListener('input', function(e) {
+            this.value = this.value.replace(/[^0-9]/g, '');
+        });
+
+    })();
     </script>
-    <script src="../assets/js/register.js"></script>
 </body>
 </html>
