@@ -654,7 +654,6 @@ $rolTexto = $isSec ? 'Secretaría' : 'Médico';
 <!doctype html>
 <html lang="es">
 <head>
-  <link rel="stylesheet" href="<?= asset('css/index.css') ?>">
   <meta charset="utf-8">
   <title>Panel Administrativo - Clínica</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -663,6 +662,7 @@ $rolTexto = $isSec ? 'Secretaría' : 'Médico';
   <script src="../assets/js/turnos_utils.js"></script>
   <link rel="stylesheet" href="<?= asset('css/theme_light.css') ?>">
   <script src="<?= asset('js/theme_toggle.js') ?>"></script>
+  <link rel="stylesheet" href="../assets/css/admin.css">
 </head>
 <body>
 

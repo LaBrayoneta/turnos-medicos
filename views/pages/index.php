@@ -34,8 +34,6 @@ $api_base_url = controller('turnos_api.php');
 <!doctype html>
 <html lang="es">
 <head>
-   <!-- Tus estilos existentes -->
-  <link rel="stylesheet" href="<?= asset('css/index.css') ?>">
   <meta charset="utf-8">
   <title>Clínica Médica - Sistema de Turnos Online</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
