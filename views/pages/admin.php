@@ -352,21 +352,57 @@ if ($isApiRequest) {
     }
   }
 
-  if ($action === 'delete_medico') {
+  // ========== ELIMINAR MÉDICO FÍSICAMENTE ==========
+if ($action === 'delete_medico') {
     ensure_csrf();
     try {
-      $idMed = (int)($_POST['id_medico'] ?? 0);
-      if ($idMed <= 0) throw new Exception('ID inválido');
+        $idMed = (int)($_POST['id_medico'] ?? 0);
+        if ($idMed <= 0) throw new Exception('ID inválido');
 
-      $stmt = $pdo->prepare("UPDATE medico SET activo=0 WHERE Id_medico=?");
-      $stmt->execute([$idMed]);
+        $pdo->beginTransaction();
 
-      json_out(['ok'=>true,'msg'=>'Médico eliminado']);
+        // Verificar si tiene turnos
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM turno WHERE Id_medico=?");
+        $stmt->execute([$idMed]);
+        $hasTurnos = $stmt->fetchColumn() > 0;
+
+        if ($hasTurnos) {
+            // Si tiene turnos, solo desactivar
+            $stmt = $pdo->prepare("UPDATE medico SET activo=0 WHERE Id_medico=?");
+            $stmt->execute([$idMed]);
+            $mensaje = 'Médico desactivado (tiene turnos asociados)';
+        } else {
+            // No tiene turnos, eliminar físicamente
+            
+            // 1. Obtener Id_usuario
+            $stmt = $pdo->prepare("SELECT Id_usuario FROM medico WHERE Id_medico=?");
+            $stmt->execute([$idMed]);
+            $idUsuario = $stmt->fetchColumn();
+            
+            if (!$idUsuario) throw new Exception('Médico no encontrado');
+
+            // 2. Eliminar horarios
+            $stmt = $pdo->prepare("DELETE FROM horario_medico WHERE Id_medico=?");
+            $stmt->execute([$idMed]);
+
+            // 3. Eliminar médico
+            $stmt = $pdo->prepare("DELETE FROM medico WHERE Id_medico=?");
+            $stmt->execute([$idMed]);
+
+            // 4. Eliminar usuario
+            $stmt = $pdo->prepare("DELETE FROM usuario WHERE Id_usuario=?");
+            $stmt->execute([$idUsuario]);
+
+            $mensaje = 'Médico eliminado completamente';
+        }
+
+        $pdo->commit();
+        json_out(['ok'=>true,'msg'=>$mensaje]);
     } catch (Throwable $e) {
-      json_out(['ok'=>false,'error'=>$e->getMessage()],500);
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        json_out(['ok'=>false,'error'=>$e->getMessage()],500);
     }
-  }
-
+}
   // ========== SECRETARIAS ==========
   if ($action === 'create_secretaria') {
     ensure_csrf();
@@ -423,18 +459,49 @@ if ($isApiRequest) {
   if ($action === 'delete_secretaria') {
     ensure_csrf();
     try {
-      $idSec = (int)($_POST['id_secretaria'] ?? 0);
-      if ($idSec <= 0) throw new Exception('ID inválido');
+        $idSec = (int)($_POST['id_secretaria'] ?? 0);
+        if ($idSec <= 0) throw new Exception('ID inválido');
 
-      $stmt = $pdo->prepare("UPDATE secretaria SET activo=0 WHERE Id_secretaria=?");
-      $stmt->execute([$idSec]);
+        $pdo->beginTransaction();
 
-      json_out(['ok'=>true,'msg'=>'Secretaria eliminada']);
+        // Verificar si tiene turnos creados
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM turno WHERE Id_secretaria=?");
+        $stmt->execute([$idSec]);
+        $hasTurnos = $stmt->fetchColumn() > 0;
+
+        if ($hasTurnos) {
+            // Si creó turnos, solo desactivar
+            $stmt = $pdo->prepare("UPDATE secretaria SET activo=0 WHERE Id_secretaria=?");
+            $stmt->execute([$idSec]);
+            $mensaje = 'Secretaria desactivada (tiene turnos asociados)';
+        } else {
+            // No tiene turnos, eliminar físicamente
+            
+            // 1. Obtener Id_usuario
+            $stmt = $pdo->prepare("SELECT Id_usuario FROM secretaria WHERE Id_secretaria=?");
+            $stmt->execute([$idSec]);
+            $idUsuario = $stmt->fetchColumn();
+            
+            if (!$idUsuario) throw new Exception('Secretaria no encontrada');
+
+            // 2. Eliminar secretaria
+            $stmt = $pdo->prepare("DELETE FROM secretaria WHERE Id_secretaria=?");
+            $stmt->execute([$idSec]);
+
+            // 3. Eliminar usuario
+            $stmt = $pdo->prepare("DELETE FROM usuario WHERE Id_usuario=?");
+            $stmt->execute([$idUsuario]);
+
+            $mensaje = 'Secretaria eliminada completamente';
+        }
+
+        $pdo->commit();
+        json_out(['ok'=>true,'msg'=>$mensaje]);
     } catch (Throwable $e) {
-      json_out(['ok'=>false,'error'=>$e->getMessage()],500);
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        json_out(['ok'=>false,'error'=>$e->getMessage()],500);
     }
-  }
-
+}
   // ========== TURNOS ==========
   if ($action === 'doctors') {
     $espId = (int)($_GET['especialidad_id'] ?? 0);

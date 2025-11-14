@@ -1,5 +1,5 @@
 <?php
-// views/pages/medico_api.php - API para panel médico
+// controllers/medico_api.php - VERSIÓN CORREGIDA COMPLETA
 error_reporting(E_ALL);
 ini_set('display_errors', '0');
 ini_set('log_errors', '1');
@@ -8,12 +8,13 @@ if (ob_get_level()) ob_end_clean();
 ob_start();
 
 session_start();
-require_once __DIR__ . '/../../config/db.php';
+require_once __DIR__ . '/../config/db.php';
 
 function json_out($data, $code = 200) { 
   if (ob_get_level()) ob_end_clean();
   http_response_code($code); 
   header('Content-Type: application/json; charset=utf-8');
+  header('X-Content-Type-Options: nosniff');
   echo json_encode($data, JSON_UNESCAPED_UNICODE); 
   exit; 
 }
@@ -31,7 +32,7 @@ function require_medico($pdo) {
   }
   
   $uid = (int)$_SESSION['Id_usuario'];
-  $st = $pdo->prepare("SELECT Id_medico FROM medico WHERE Id_usuario = ? AND Activo = 1 LIMIT 1");
+  $st = $pdo->prepare("SELECT Id_medico FROM medico WHERE Id_usuario = ? AND activo = 1 LIMIT 1");
   $st->execute([$uid]);
   $medId = $st->fetchColumn();
   
@@ -44,12 +45,16 @@ function require_medico($pdo) {
 
 try {
     $pdo = db();
+    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 } catch (Throwable $e) {
+    error_log("DB Error in medico_api: " . $e->getMessage());
     json_out(['ok' => false, 'error' => 'Error de conexión'], 500);
 }
 
 $action = $_GET['action'] ?? $_POST['action'] ?? '';
 $medicoId = require_medico($pdo);
+
+error_log("Medico API - Action: $action, Medico ID: $medicoId");
 
 // ========== ESTADÍSTICAS ==========
 if ($action === 'stats') {
@@ -59,8 +64,8 @@ if ($action === 'stats') {
         // Turnos de hoy
         $st = $pdo->prepare("
             SELECT COUNT(*) FROM turno 
-            WHERE Id_medico = ? AND DATE(Fecha) = ? 
-            AND (Estado IS NULL OR Estado <> 'cancelado')
+            WHERE Id_medico = ? AND DATE(fecha) = ? 
+            AND (estado IS NULL OR estado <> 'cancelado')
         ");
         $st->execute([$medicoId, $hoy]);
         $turnosHoy = (int)$st->fetchColumn();
@@ -68,9 +73,9 @@ if ($action === 'stats') {
         // Pendientes de atención hoy
         $st = $pdo->prepare("
             SELECT COUNT(*) FROM turno 
-            WHERE Id_medico = ? AND DATE(Fecha) = ? 
-            AND (Estado IS NULL OR Estado <> 'cancelado')
-            AND Atendido = 0
+            WHERE Id_medico = ? AND DATE(fecha) = ? 
+            AND (estado IS NULL OR estado = 'reservado')
+            AND atendido = 0
         ");
         $st->execute([$medicoId, $hoy]);
         $pendientes = (int)$st->fetchColumn();
@@ -78,7 +83,7 @@ if ($action === 'stats') {
         // Atendidos hoy
         $st = $pdo->prepare("
             SELECT COUNT(*) FROM turno 
-            WHERE Id_medico = ? AND DATE(Fecha) = ? AND Atendido = 1
+            WHERE Id_medico = ? AND DATE(fecha) = ? AND atendido = 1
         ");
         $st->execute([$medicoId, $hoy]);
         $atendidos = (int)$st->fetchColumn();
@@ -90,11 +95,13 @@ if ($action === 'stats') {
         $st = $pdo->prepare("
             SELECT COUNT(*) FROM turno 
             WHERE Id_medico = ? 
-            AND DATE(Fecha) BETWEEN ? AND ?
-            AND (Estado IS NULL OR Estado <> 'cancelado')
+            AND DATE(fecha) BETWEEN ? AND ?
+            AND (estado IS NULL OR estado <> 'cancelado')
         ");
         $st->execute([$medicoId, $inicioSemana, $finSemana]);
         $semana = (int)$st->fetchColumn();
+        
+        error_log("Stats loaded: Hoy=$turnosHoy, Pendientes=$pendientes, Atendidos=$atendidos, Semana=$semana");
         
         json_out([
             'ok' => true,
@@ -107,6 +114,7 @@ if ($action === 'stats') {
         ]);
         
     } catch (Throwable $e) {
+        error_log("Error in stats: " . $e->getMessage());
         json_out(['ok' => false, 'error' => $e->getMessage()], 500);
     }
 }
@@ -119,23 +127,23 @@ if ($action === 'turnos_hoy') {
         $st = $pdo->prepare("
             SELECT 
                 t.Id_turno as id,
-                t.Fecha as fecha,
-                t.Atendido as atendido,
-                t.Fecha_Atencion as fecha_atencion,
+                t.fecha,
+                t.atendido,
+                t.fecha_atencion,
                 p.Id_paciente as paciente_id,
-                u.Nombre as paciente_nombre_prim,
-                u.Apellido as paciente_apellido,
+                u.nombre as paciente_nombre,
+                u.apellido as paciente_apellido,
                 u.dni as paciente_dni,
-                os.Nombre as obra_social,
-                p.Libreta_sanitaria as libreta
+                os.nombre as obra_social,
+                p.libreta_sanitaria as libreta
             FROM turno t
             JOIN paciente p ON p.Id_paciente = t.Id_paciente
             JOIN usuario u ON u.Id_usuario = p.Id_usuario
             LEFT JOIN obra_social os ON os.Id_obra_social = p.Id_obra_social
             WHERE t.Id_medico = ?
-                AND DATE(t.Fecha) = ?
-                AND (t.Estado IS NULL OR t.Estado <> 'cancelado')
-            ORDER BY t.Fecha ASC
+                AND DATE(t.fecha) = ?
+                AND (t.estado IS NULL OR t.estado <> 'cancelado')
+            ORDER BY t.fecha ASC
         ");
         $st->execute([$medicoId, $hoy]);
         
@@ -147,16 +155,18 @@ if ($action === 'turnos_hoy') {
                 'atendido' => (bool)$row['atendido'],
                 'fecha_atencion' => $row['fecha_atencion'],
                 'paciente_id' => (int)$row['paciente_id'],
-                'paciente_nombre' => trim($row['paciente_apellido'] . ', ' . $row['paciente_nombre_prim']),
+                'paciente_nombre' => trim($row['paciente_apellido'] . ', ' . $row['paciente_nombre']),
                 'paciente_dni' => $row['paciente_dni'],
-                'obra_social' => $row['obra_social'],
+                'obra_social' => $row['obra_social'] ?? 'Sin obra social',
                 'libreta' => $row['libreta']
             ];
         }
         
+        error_log("Turnos hoy loaded: " . count($turnos));
         json_out(['ok' => true, 'turnos' => $turnos]);
         
     } catch (Throwable $e) {
+        error_log("Error in turnos_hoy: " . $e->getMessage());
         json_out(['ok' => false, 'error' => $e->getMessage()], 500);
     }
 }
@@ -168,36 +178,36 @@ if ($action === 'turnos_proximos') {
         
         if ($fecha) {
             // Fecha específica
-            $whereClause = "DATE(t.Fecha) = ?";
+            $whereClause = "DATE(t.fecha) = ?";
             $params = [$medicoId, $fecha];
         } else {
             // Próximos 7 días
             $hoy = date('Y-m-d');
             $fin = date('Y-m-d', strtotime('+7 days'));
-            $whereClause = "DATE(t.Fecha) BETWEEN ? AND ?";
+            $whereClause = "DATE(t.fecha) BETWEEN ? AND ?";
             $params = [$medicoId, $hoy, $fin];
         }
         
         $st = $pdo->prepare("
             SELECT 
                 t.Id_turno as id,
-                t.Fecha as fecha,
-                t.Atendido as atendido,
-                t.Fecha_Atencion as fecha_atencion,
+                t.fecha,
+                t.atendido,
+                t.fecha_atencion,
                 p.Id_paciente as paciente_id,
-                u.Nombre as paciente_nombre_prim,
-                u.Apellido as paciente_apellido,
+                u.nombre as paciente_nombre,
+                u.apellido as paciente_apellido,
                 u.dni as paciente_dni,
-                os.Nombre as obra_social,
-                p.Libreta_sanitaria as libreta
+                os.nombre as obra_social,
+                p.libreta_sanitaria as libreta
             FROM turno t
             JOIN paciente p ON p.Id_paciente = t.Id_paciente
             JOIN usuario u ON u.Id_usuario = p.Id_usuario
             LEFT JOIN obra_social os ON os.Id_obra_social = p.Id_obra_social
             WHERE t.Id_medico = ?
                 AND $whereClause
-                AND (t.Estado IS NULL OR t.Estado <> 'cancelado')
-            ORDER BY t.Fecha ASC
+                AND (t.estado IS NULL OR t.estado <> 'cancelado')
+            ORDER BY t.fecha ASC
         ");
         $st->execute($params);
         
@@ -209,16 +219,18 @@ if ($action === 'turnos_proximos') {
                 'atendido' => (bool)$row['atendido'],
                 'fecha_atencion' => $row['fecha_atencion'],
                 'paciente_id' => (int)$row['paciente_id'],
-                'paciente_nombre' => trim($row['paciente_apellido'] . ', ' . $row['paciente_nombre_prim']),
+                'paciente_nombre' => trim($row['paciente_apellido'] . ', ' . $row['paciente_nombre']),
                 'paciente_dni' => $row['paciente_dni'],
-                'obra_social' => $row['obra_social'],
+                'obra_social' => $row['obra_social'] ?? 'Sin obra social',
                 'libreta' => $row['libreta']
             ];
         }
         
+        error_log("Turnos proximos loaded: " . count($turnos));
         json_out(['ok' => true, 'turnos' => $turnos]);
         
     } catch (Throwable $e) {
+        error_log("Error in turnos_proximos: " . $e->getMessage());
         json_out(['ok' => false, 'error' => $e->getMessage()], 500);
     }
 }
@@ -259,7 +271,7 @@ if ($action === 'guardar_diagnostico' && $_SERVER['REQUEST_METHOD'] === 'POST') 
         // Insertar diagnóstico
         $st = $pdo->prepare("
             INSERT INTO diagnostico 
-            (Id_turno, Id_medico, Diagnostico, Observaciones, Sintomas, Fecha_Diagnostico)
+            (Id_turno, Id_medico, diagnostico, observaciones, sintomas, fecha_diagnostico)
             VALUES (?, ?, ?, ?, ?, NOW())
         ");
         $st->execute([$turnoId, $medicoId, $diagnostico, $observaciones, $sintomas]);
@@ -282,7 +294,7 @@ if ($action === 'guardar_diagnostico' && $_SERVER['REQUEST_METHOD'] === 'POST') 
             
             $st = $pdo->prepare("
                 INSERT INTO receta 
-                (Id_diagnostico, Id_turno, Id_medico, Id_paciente, Medicamentos, Indicaciones, Duracion_Tratamiento, Fecha_Vencimiento)
+                (Id_diagnostico, Id_turno, Id_medico, Id_paciente, medicamentos, indicaciones, duracion_tratamiento, fecha_vencimiento)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ");
             $st->execute([
@@ -300,7 +312,7 @@ if ($action === 'guardar_diagnostico' && $_SERVER['REQUEST_METHOD'] === 'POST') 
         // Marcar turno como atendido
         $st = $pdo->prepare("
             UPDATE turno 
-            SET Atendido = 1, Fecha_Atencion = NOW(), Id_medico_atencion = ?
+            SET atendido = 1, fecha_atencion = NOW(), Id_medico_atencion = ?
             WHERE Id_turno = ?
         ");
         $st->execute([$medicoId, $turnoId]);
@@ -315,17 +327,19 @@ if ($action === 'guardar_diagnostico' && $_SERVER['REQUEST_METHOD'] === 'POST') 
         
         $st = $pdo->prepare("
             INSERT INTO historial_clinico 
-            (Id_paciente, Id_turno, Id_medico, Tipo_Registro, Contenido)
+            (Id_paciente, Id_turno, Id_medico, tipo_registro, contenido)
             VALUES (?, ?, ?, 'consulta', ?)
         ");
         $st->execute([$pacienteId, $turnoId, $medicoId, $contenido]);
         
         $pdo->commit();
         
+        error_log("Diagnostico saved: Turno $turnoId, Medico $medicoId");
         json_out(['ok' => true, 'mensaje' => 'Diagnóstico guardado y turno marcado como atendido']);
         
     } catch (Throwable $e) {
         if ($pdo->inTransaction()) $pdo->rollBack();
+        error_log("Error saving diagnostico: " . $e->getMessage());
         json_out(['ok' => false, 'error' => $e->getMessage()], 500);
     }
 }
@@ -338,19 +352,19 @@ if ($action === 'historial') {
         
         $st = $pdo->prepare("
             SELECT 
-                d.Diagnostico as diagnostico,
-                d.Fecha_Diagnostico as fecha,
-                u.Nombre as paciente_nombre_prim,
-                u.Apellido as paciente_apellido,
-                r.Medicamentos as medicamentos
+                d.diagnostico,
+                d.fecha_diagnostico as fecha,
+                u.nombre as paciente_nombre,
+                u.apellido as paciente_apellido,
+                r.medicamentos
             FROM diagnostico d
             JOIN turno t ON t.Id_turno = d.Id_turno
             JOIN paciente p ON p.Id_paciente = t.Id_paciente
             JOIN usuario u ON u.Id_usuario = p.Id_usuario
             LEFT JOIN receta r ON r.Id_diagnostico = d.Id_diagnostico
             WHERE d.Id_medico = ?
-                AND DATE(d.Fecha_Diagnostico) BETWEEN ? AND ?
-            ORDER BY d.Fecha_Diagnostico DESC
+                AND DATE(d.fecha_diagnostico) BETWEEN ? AND ?
+            ORDER BY d.fecha_diagnostico DESC
             LIMIT 50
         ");
         $st->execute([$medicoId, $desde, $hasta]);
@@ -359,17 +373,20 @@ if ($action === 'historial') {
         foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $row) {
             $historial[] = [
                 'fecha' => $row['fecha'],
-                'paciente_nombre' => trim($row['paciente_apellido'] . ', ' . $row['paciente_nombre_prim']),
+                'paciente_nombre' => trim($row['paciente_apellido'] . ', ' . $row['paciente_nombre']),
                 'diagnostico' => $row['diagnostico'],
                 'medicamentos' => $row['medicamentos']
             ];
         }
         
+        error_log("Historial loaded: " . count($historial) . " records");
         json_out(['ok' => true, 'historial' => $historial]);
         
     } catch (Throwable $e) {
+        error_log("Error in historial: " . $e->getMessage());
         json_out(['ok' => false, 'error' => $e->getMessage()], 500);
     }
 }
 
+error_log("Unsupported action: $action");
 json_out(['ok' => false, 'error' => 'Acción no soportada'], 400);
