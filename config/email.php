@@ -17,8 +17,8 @@
 define('SMTP_HOST', 'smtp.gmail.com');
 define('SMTP_PORT', 587);
 define('SMTP_SECURE', 'tls');
-define('SMTP_USERNAME', 'tuclinica@gmail.com'); // ⚠️ CAMBIAR
-define('SMTP_PASSWORD', 'tu_contraseña_app_16_digitos'); // ⚠️ CAMBIAR
+define('SMTP_USERNAME', 'braiansalgado436@gmail.com'); // ⚠️ CAMBIAR
+define('SMTP_PASSWORD', 'abcd efgh ijkl mnop'); // ⚠️ CAMBIAR
 define('SMTP_FROM_EMAIL', 'tuclinica@gmail.com');
 define('SMTP_FROM_NAME', 'Clínica Vida Plena');
 
