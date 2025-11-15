@@ -1,4 +1,4 @@
-// views/assets/js/index.js - Sistema de Turnos COMPLETO
+// views/assets/js/index.js - Sistema de Turnos COMPLETO Y CORREGIDO
 (function() {
   'use strict';
 
@@ -688,6 +688,42 @@
     }
   }
 
+  // ========== VALIDAR TURNO EXISTENTE ==========
+  async function checkExistingTurno(medicoId) {
+    try {
+      const url = `${API_BASE}?action=my_appointments`;
+      console.log('🔍 Verificando turnos existentes con médico:', medicoId);
+      
+      const res = await fetch(url, {
+        headers: {
+          'Accept': 'application/json'
+        }
+      });
+
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || 'Error');
+
+      // Filtrar turnos activos con este médico
+      const turnosActivos = (data.items || []).filter(t => {
+        return t.Id_medico == medicoId && 
+               (t.estado === 'reservado' || !t.estado);
+      });
+
+      if (turnosActivos.length > 0) {
+        console.log('⚠️ Ya tiene turno con este médico:', turnosActivos[0]);
+        return turnosActivos[0];
+      }
+
+      console.log('✅ No tiene turnos activos con este médico');
+      return null;
+
+    } catch (e) {
+      console.error('Error checking existing turno:', e);
+      return null;
+    }
+  }
+
   // ========== RESERVAR/REPROGRAMAR ==========
   btnReservar?.addEventListener('click', async () => {
     setMsg('');
@@ -705,6 +741,49 @@
     }
 
     const isReschedule = !!selectedApptId;
+
+    // ✅ VALIDACIÓN: Si no está reprogramando, verificar turno existente
+    if (!isReschedule) {
+      console.log('🔍 Verificando turnos duplicados...');
+      
+      setMsg('⏳ Verificando disponibilidad...', true);
+      const turnoExistente = await checkExistingTurno(selMedico.value);
+      
+      if (turnoExistente) {
+        const medicoNombre = selMedico.options[selMedico.selectedIndex].text;
+        
+        showError('Ya tenés un turno activo con este médico');
+        
+        alert(
+          `⚠️ YA TENÉS UN TURNO ACTIVO\n\n` +
+          `No podés reservar otro turno con ${medicoNombre} porque ya tenés uno pendiente.\n\n` +
+          `📅 Turno existente: ${turnoExistente.fecha_fmt}\n\n` +
+          `💡 Para sacar un nuevo turno, primero debés:\n` +
+          `• Cancelar el turno anterior, o\n` +
+          `• Reprogramarlo usando el botón "🔄 Reprogramar"\n\n` +
+          `Esta restricción evita turnos duplicados y mejora la disponibilidad para todos.`
+        );
+        
+        // Scroll a la tabla de turnos para que vea su turno existente
+        const turnosTable = document.querySelector('.card.side');
+        if (turnosTable) {
+          turnosTable.scrollIntoView({
+            behavior: 'smooth',
+            block: 'start'
+          });
+          
+          // Resaltar brevemente la tabla
+          turnosTable.style.animation = 'pulse 1s ease-in-out';
+          setTimeout(() => {
+            turnosTable.style.animation = '';
+          }, 1000);
+        }
+        
+        return; // ⛔ DETENER LA RESERVA
+      }
+      
+      console.log('✅ Validación pasada - puede reservar');
+    }
 
     const medicoNombre = selMedico.options[selMedico.selectedIndex].text;
     const espNombre = selEsp.options[selEsp.selectedIndex].text;
@@ -836,7 +915,6 @@
     console.log('🚀 Inicializando aplicación de turnos');
     console.log('🔧 Verificando elementos DOM...');
 
-    // Verificar elementos críticos
     const elementos = {
       'selEsp': selEsp,
       'selMedico': selMedico,

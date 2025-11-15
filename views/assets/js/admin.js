@@ -865,64 +865,104 @@
     }
   });
 
-  formCreateTurno?.addEventListener('submit', async (ev)=>{
-    ev.preventDefault();
-    setMsg(msgModal, '');
+  formCreateTurno?.addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  setMsg(msgModal, '');
 
-    const pacId = selectedPacienteId.value;
-    const date = turnoDate.value;
-    const time = turnoTime.value;
+  const pacId = selectedPacienteId.value;
+  const date = turnoDate.value;
+  const time = turnoTime.value;
+  const medId = $('#turnoMedicoId').value;
 
-    if (!pacId || pacId === '') {
-      setMsg(msgModal, '❌ Seleccioná un paciente', false);
-      alert('Debés buscar y hacer click en un paciente');
-      return;
-    }
-    if (!date || date === '') {
-      setMsg(msgModal, '❌ Seleccioná una fecha', false);
-      return;
-    }
-    
-    const validation = Utils.isValidTurnoDate(date);
-    if (!validation.valid) {
-      setMsg(msgModal, '❌ ' + validation.error, false);
-      alert('⚠️ ' + validation.error);
-      return;
-    }
-    
-    if (!time || time === '') {
-      setMsg(msgModal, '❌ Seleccioná un horario', false);
-      return;
-    }
-    
+  // Validaciones básicas
+  if (!pacId || pacId === '') {
+    setMsg(msgModal, '❌ Seleccioná un paciente', false);
+    alert('Debés buscar y hacer click en un paciente');
+    return;
+  }
+  if (!date || date === '') {
+    setMsg(msgModal, '❌ Seleccioná una fecha', false);
+    return;
+  }
+  
+  const validation = Utils.isValidTurnoDate(date);
+  if (!validation.valid) {
+    setMsg(msgModal, '❌ ' + validation.error, false);
+    alert('⚠️ ' + validation.error);
+    return;
+  }
+  
+  if (!time || time === '') {
+    setMsg(msgModal, '❌ Seleccioná un horario', false);
+    return;
+  }
+
+  // ✅ NUEVA VALIDACIÓN: Verificar turno existente
+  console.log('🔍 Verificando turnos duplicados...');
+  setMsg(msgModal, '⏳ Verificando turnos existentes...', true);
+  
+  const turnoExistente = await checkPacienteTurnoExistente(pacId, medId);
+  
+  if (turnoExistente) {
     const pacienteNombre = selectedPacienteInfo.textContent.split('\n')[0];
-    if (!confirm(`¿Crear turno?\n\nPaciente: ${pacienteNombre}\n📅 ${Utils.formatDateDisplay(date)}\n🕐 ${Utils.formatHour12(time)}`)) {
-      return;
-    }
+    const medicoSelect = document.getElementById('fMed');
+    const medicoNombre = medicoSelect ? medicoSelect.options[medicoSelect.selectedIndex].text : 'este médico';
     
-    try {
-      const fd = new FormData();
-      fd.append('action', 'create_turno');
-      fd.append('medico_id', $('#turnoMedicoId').value);
-      fd.append('paciente_id', pacId);
-      fd.append('date', date);
-      fd.append('time', time);
-      fd.append('csrf_token', csrf);
+    setMsg(msgModal, '⚠️ El paciente ya tiene un turno activo con este médico', false);
+    
+    alert(
+      `⚠️ TURNO DUPLICADO DETECTADO\n\n` +
+      `El paciente ${pacienteNombre} ya tiene un turno activo con ${medicoNombre}.\n\n` +
+      `📅 Turno existente: ${turnoExistente.fecha_fmt}\n` +
+      `📍 Estado: ${turnoExistente.estado}\n\n` +
+      `💡 Para crear un nuevo turno, primero debés:\n` +
+      `• Cancelar el turno anterior desde la agenda, o\n` +
+      `• Reprogramarlo en lugar de crear uno nuevo\n\n` +
+      `Esta restricción evita turnos duplicados por médico.`
+    );
+    
+    return; // ⛔ DETENER LA CREACIÓN
+  }
+  
+  console.log('✅ Validación pasada - puede crear turno');
+  
+  const pacienteNombre = selectedPacienteInfo.textContent.split('\n')[0];
+  if (!confirm(`¿Crear turno?\n\nPaciente: ${pacienteNombre}\n📅 ${Utils.formatDateDisplay(date)}\n🕐 ${Utils.formatHour12(time)}`)) {
+    return;
+  }
+  
+  setMsg(msgModal, '⏳ Creando turno...', true);
+  
+  try {
+    const fd = new FormData();
+    fd.append('action', 'create_turno');
+    fd.append('medico_id', medId);
+    fd.append('paciente_id', pacId);
+    fd.append('date', date);
+    fd.append('time', time);
+    fd.append('csrf_token', csrf);
 
-      const res = await fetch('admin.php', { method:'POST', body:fd, headers:{ 'Accept':'application/json' }});
-      const data = await res.json();
-      if (!data.ok) throw new Error(data.error || 'Error');
+    const res = await fetch('admin.php', { 
+      method: 'POST', 
+      body: fd, 
+      headers: { 'Accept': 'application/json' }
+    });
+    
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'Error');
 
-      setMsg(msgModal, '✅ ' + (data.msg || 'Turno creado'), true);
-      setTimeout(()=>{
-        hideModal(modalCreateTurno);
-        loadAgenda();
-      }, 1000);
-    } catch (e) {
-      setMsg(msgModal, e.message, false);
-    }
-  });
-
+    setMsg(msgModal, '✅ ' + (data.msg || 'Turno creado'), true);
+    
+    setTimeout(() => {
+      hideModal(modalCreateTurno);
+      loadAgenda();
+    }, 1500);
+    
+  } catch (e) {
+    console.error('Error creando turno:', e);
+    setMsg(msgModal, '❌ ' + e.message, false);
+  }
+});
   // ========== CERRAR MODALES ==========
   btnCloseModal?.addEventListener('click', ()=> hideModal(modalCreateTurno));
   btnCloseMedicoModal?.addEventListener('click', ()=> hideModal(modalEditMedico));
@@ -933,7 +973,7 @@
       if (e.target === modal) hideModal(modal);
     });
   });
-  
+
   // ========== EVENTOS FILTROS ==========
   
   btnRefresh?.addEventListener('click', loadAgenda);
