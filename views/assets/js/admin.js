@@ -1,4 +1,6 @@
-// admin.js - Panel Administrativo Mejorado (COMPLETO - CORREGIDO PARA MINÚSCULAS)
+// admin.js - Panel Administrativo (VERSIÓN CORREGIDA)
+// ✅ CORRECCIÓN: Botones de eliminar ahora funcionan correctamente
+
 (function(){
   const $ = s => document.querySelector(s);
   const $$ = s => document.querySelectorAll(s);
@@ -110,7 +112,7 @@
       secretariasData = data.secretarias || [];
       obrasSocialesData = data.obras_sociales || [];
 
-      // ✅ Cargar especialidades en los selects
+      // Cargar especialidades en los selects
       const espSelects = ['#espCreateSelect', '#fEsp', '#editMedEsp'];
       espSelects.forEach(sel => {
         const element = $(sel);
@@ -119,7 +121,6 @@
           especialidades.forEach(e=>{
             const opt = document.createElement('option');
             opt.value = e.Id_Especialidad;
-            // ✅ Soportar tanto minúsculas como mayúsculas
             opt.textContent = e.nombre || e.Nombre || 'Sin nombre';
             element.appendChild(opt);
           });
@@ -142,7 +143,6 @@
     tblObras.innerHTML='';
     rows.forEach(r=>{
       const tr=document.createElement('tr');
-      // ✅ Soportar minúsculas y mayúsculas
       const nombreObra = r.nombre || r.Nombre || '';
       const activo = r.activo !== undefined ? r.activo : (r.Activo !== undefined ? r.Activo : false);
       const estadoTexto = activo ? 'Activa' : 'Inactiva';
@@ -229,7 +229,6 @@
     rows.forEach(r=>{
       const tr=document.createElement('tr');
       
-      // ✅ Soportar minúsculas y mayúsculas
       const apellido = r.apellido || r.Apellido || '';
       const nombre = r.nombre || r.Nombre || '';
       const dni = r.dni || '';
@@ -240,7 +239,6 @@
       if (r.horarios && r.horarios.length > 0) {
         const horariosPorDia = {};
         r.horarios.forEach(h => {
-          // ✅ Soportar ambos formatos
           const diaSemana = h.dia_semana || h.Dia_semana;
           if (!horariosPorDia[diaSemana]) horariosPorDia[diaSemana] = [];
           
@@ -275,13 +273,27 @@
         <td>${horariosHTML}</td>
         <td class="row-actions">
           <button class="btn ghost btn-edit-med" data-id="${r.Id_medico}">✏️ Editar</button>
-          <button class="btn danger btn-delete-med" data-id="${r.Id_medico}">🗑️</button>
+          <button class="btn danger btn-delete-med" data-id="${r.Id_medico}">🗑️ Eliminar</button>
         </td>`;
       tblMedicos.appendChild(tr);
     });
 
-    $$('.btn-edit-med').forEach(b=>b.addEventListener('click', ()=> openEditMedico(b.dataset.id)));
-    $$('.btn-delete-med').forEach(b=>b.addEventListener('click', ()=> deleteMedico(b.dataset.id)));
+    // ✅ CORRECCIÓN: Asegurar que los event listeners se agreguen
+    $$('.btn-edit-med').forEach(b => {
+      b.addEventListener('click', ()=> openEditMedico(b.dataset.id));
+    });
+    
+    // ✅ CORRECCIÓN CRÍTICA: Usar la función global window.deleteMedico
+    $$('.btn-delete-med').forEach(b => {
+      b.addEventListener('click', () => {
+        if (window.deleteMedico) {
+          window.deleteMedico(b.dataset.id);
+        } else {
+          console.error('❌ Función deleteMedico no encontrada');
+          alert('Error: Función de eliminación no disponible. Recarga la página.');
+        }
+      });
+    });
   }
 
   function openEditMedico(id){
@@ -302,25 +314,6 @@
     showModal(modalEditMedico);
   }
 
-  async function deleteMedico(id){
-    if (!confirm('¿Eliminar este médico? Esta acción no se puede deshacer.')) return;
-    try{
-      const fd = new FormData();
-      fd.append('action', 'delete_medico');
-      fd.append('id_medico', id);
-      fd.append('csrf_token', csrf);
-
-      const res = await fetch('admin.php', { method:'POST', body:fd, headers:{ 'Accept':'application/json' }});
-      const data = await res.json();
-      if (!data.ok) throw new Error(data.error || 'Error');
-      
-      alert('✅ Médico eliminado');
-      await loadInit();
-    }catch(err){
-      alert('❌ ' + err.message);
-    }
-  }
-
   // ========== SECRETARIAS ==========
   function renderSecretarias(rows){
     if(!tblSecretarias) return;
@@ -328,7 +321,6 @@
     rows.forEach(r=>{
       const tr=document.createElement('tr');
       
-      // ✅ Soportar minúsculas y mayúsculas
       const apellido = r.apellido || r.Apellido || '';
       const nombre = r.nombre || r.Nombre || '';
       const dni = r.dni || '';
@@ -340,13 +332,27 @@
         <td>${esc(email)}</td>
         <td class="row-actions">
           <button class="btn ghost btn-edit-sec" data-id="${r.Id_secretaria}">✏️ Editar</button>
-          <button class="btn danger btn-delete-sec" data-id="${r.Id_secretaria}">🗑️</button>
+          <button class="btn danger btn-delete-sec" data-id="${r.Id_secretaria}">🗑️ Eliminar</button>
         </td>`;
       tblSecretarias.appendChild(tr);
     });
 
-    $$('.btn-edit-sec').forEach(b=>b.addEventListener('click', ()=> openEditSecretaria(b.dataset.id)));
-    $$('.btn-delete-sec').forEach(b=>b.addEventListener('click', ()=> deleteSecretaria(b.dataset.id)));
+    // ✅ CORRECCIÓN: Asegurar event listeners
+    $$('.btn-edit-sec').forEach(b => {
+      b.addEventListener('click', ()=> openEditSecretaria(b.dataset.id));
+    });
+    
+    // ✅ CORRECCIÓN CRÍTICA: Usar la función global window.deleteSecretaria
+    $$('.btn-delete-sec').forEach(b => {
+      b.addEventListener('click', () => {
+        if (window.deleteSecretaria) {
+          window.deleteSecretaria(b.dataset.id);
+        } else {
+          console.error('❌ Función deleteSecretaria no encontrada');
+          alert('Error: Función de eliminación no disponible. Recarga la página.');
+        }
+      });
+    });
   }
 
   if (createSecretariaForm) {
@@ -927,7 +933,7 @@
       if (e.target === modal) hideModal(modal);
     });
   });
-
+  
   // ========== EVENTOS FILTROS ==========
   
   btnRefresh?.addEventListener('click', loadAgenda);
@@ -983,7 +989,7 @@
   fFrom?.addEventListener('change', loadAgenda);
   fTo?.addEventListener('change', loadAgenda);
 
-  // ========== INICIAL ==========
+// ========== INICIAL ==========
   (async function init(){
     console.log('🚀 Inicializando panel admin');
     await loadInit();

@@ -344,96 +344,7 @@ if ($action === 'my_appointments') {
   }
 }
 
-// REEMPLAZAR la acción 'book' en controllers/turnos_api.php
-
-if ($action === 'book' && $_SERVER['REQUEST_METHOD'] === 'POST') {
-  ensure_csrf();
-  $uid = require_login();
-  
-  try {
-    $date = trim($_POST['date'] ?? '');
-    $time = trim($_POST['time'] ?? '');
-    $med = (int)($_POST['medico_id'] ?? 0);
-    
-    if (!$date || !validate_date($date)) {
-      json_out(['ok' => false, 'error' => 'Fecha inválida'], 400);
-    }
-    if (!$time || !preg_match('/^\d{2}:\d{2}$/', $time)) {
-      json_out(['ok' => false, 'error' => 'Hora inválida'], 400);
-    }
-    if ($med <= 0) json_out(['ok' => false, 'error' => 'Médico inválido'], 400);
-
-    // Verificar médico activo
-    $chkM = $pdo->prepare("SELECT 1 FROM medico WHERE Id_medico = ? AND Activo = 1");
-    $chkM->execute([$med]); 
-    if (!$chkM->fetch()) json_out(['ok' => false, 'error' => 'Médico no encontrado'], 404);
-
-    // Obtener paciente
-    $st = $pdo->prepare("SELECT Id_paciente FROM paciente WHERE Id_usuario = ? AND Activo = 1 LIMIT 1");
-    $st->execute([$uid]); 
-    $pacId = (int)($st->fetchColumn() ?: 0);
-    if ($pacId <= 0) json_out(['ok' => false, 'error' => 'Usuario no registrado como paciente'], 400);
-
-    // ✅ NUEVA VALIDACIÓN: Verificar si ya tiene turno activo con este médico
-    $chkExisting = $pdo->prepare("
-      SELECT COUNT(*) FROM turno 
-      WHERE Id_paciente = ? 
-      AND Id_medico = ? 
-      AND (Estado IS NULL OR Estado = 'reservado')
-      AND Fecha >= NOW()
-    ");
-    $chkExisting->execute([$pacId, $med]);
-    
-    if ($chkExisting->fetchColumn() > 0) {
-      json_out([
-        'ok' => false, 
-        'error' => 'Ya tenés un turno activo con este médico. Cancelá o completá el turno anterior antes de reservar uno nuevo.'
-      ], 409);
-    }
-
-    // Validar fecha/hora
-    $dt = DateTime::createFromFormat('Y-m-d H:i', "$date $time");
-    if (!$dt) json_out(['ok' => false, 'error' => 'Fecha/hora inválidas'], 400);
-
-    $fechaHora = $dt->format('Y-m-d H:i:00');
-    
-    // Verificar horario del médico
-    $diaSemana = get_day_name($date);
-    $chkHorario = $pdo->prepare("
-      SELECT 1 FROM horario_medico 
-      WHERE Id_medico = ? AND Dia_semana = ? 
-      AND TIME(?) >= Hora_inicio AND TIME(?) < Hora_fin
-      LIMIT 1
-    ");
-    $chkHorario->execute([$med, $diaSemana, $time, $time]);
-    if (!$chkHorario->fetch()) {
-      json_out(['ok' => false, 'error' => 'Horario no disponible para este médico'], 400);
-    }
-    
-    // Verificar disponibilidad del slot
-    $chk = $pdo->prepare("
-      SELECT 1 FROM turno 
-      WHERE Fecha = ? AND Id_medico = ? AND (Estado IS NULL OR Estado <> 'cancelado') 
-      LIMIT 1
-    ");
-    $chk->execute([$fechaHora, $med]);
-    if ($chk->fetch()) json_out(['ok' => false, 'error' => 'Horario ocupado'], 409);
-
-    // Insertar turno
-    $ins = $pdo->prepare("
-      INSERT INTO turno (Fecha, Estado, Id_paciente, Id_medico) 
-      VALUES (?, 'reservado', ?, ?)
-    ");
-    $ins->execute([$fechaHora, $pacId, $med]);
-
-    error_log("Turno created: User $uid, Medico $med, Date $fechaHora");
-    json_out(['ok' => true, 'mensaje' => 'Turno reservado exitosamente']);
-    
-  } catch (Throwable $e) {
-    error_log("Error en book: " . $e->getMessage());
-    json_out(['ok' => false, 'error' => 'Error al reservar turno'], 500);
-  }
-}// REEMPLAZAR la acción 'book' en controllers/turnos_api.php
+// ========== EN controllers/turnos_api.php - REEMPLAZAR LA ACCIÓN 'book' ==========
 
 if ($action === 'book' && $_SERVER['REQUEST_METHOD'] === 'POST') {
   ensure_csrf();
@@ -523,6 +434,7 @@ if ($action === 'book' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     json_out(['ok' => false, 'error' => 'Error al reservar turno'], 500);
   }
 }
+
 
 // ✅ Cancelar turno
 if ($action === 'cancel' && $_SERVER['REQUEST_METHOD'] === 'POST') {

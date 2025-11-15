@@ -352,7 +352,7 @@ if ($isApiRequest) {
     }
   }
 
-  // ========== ELIMINAR MÉDICO FÍSICAMENTE ==========
+ // ========== ELIMINAR MÉDICO FÍSICAMENTE ==========
 if ($action === 'delete_medico') {
     ensure_csrf();
     try {
@@ -361,18 +361,30 @@ if ($action === 'delete_medico') {
 
         $pdo->beginTransaction();
 
-        // Verificar si tiene turnos
+        // Verificar si tiene turnos, diagnósticos o recetas
         $stmt = $pdo->prepare("SELECT COUNT(*) FROM turno WHERE Id_medico=?");
         $stmt->execute([$idMed]);
         $hasTurnos = $stmt->fetchColumn() > 0;
+        
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM diagnostico WHERE Id_medico=?");
+        $stmt->execute([$idMed]);
+        $hasDiagnosticos = $stmt->fetchColumn() > 0;
+        
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM receta WHERE Id_medico=?");
+        $stmt->execute([$idMed]);
+        $hasRecetas = $stmt->fetchColumn() > 0;
+        
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM historial_clinico WHERE Id_medico=?");
+        $stmt->execute([$idMed]);
+        $hasHistorial = $stmt->fetchColumn() > 0;
 
-        if ($hasTurnos) {
-            // Si tiene turnos, solo desactivar
+        if ($hasTurnos || $hasDiagnosticos || $hasRecetas || $hasHistorial) {
+            // Tiene registros asociados - SOLO desactivar
             $stmt = $pdo->prepare("UPDATE medico SET activo=0 WHERE Id_medico=?");
             $stmt->execute([$idMed]);
-            $mensaje = 'Médico desactivado (tiene turnos asociados)';
+            $mensaje = 'Médico desactivado (tiene registros médicos asociados)';
         } else {
-            // No tiene turnos, eliminar físicamente
+            // NO tiene registros - eliminar físicamente
             
             // 1. Obtener Id_usuario
             $stmt = $pdo->prepare("SELECT Id_usuario FROM medico WHERE Id_medico=?");
@@ -381,7 +393,7 @@ if ($action === 'delete_medico') {
             
             if (!$idUsuario) throw new Exception('Médico no encontrado');
 
-            // 2. Eliminar horarios
+            // 2. Eliminar horarios (CASCADE debe funcionar aquí)
             $stmt = $pdo->prepare("DELETE FROM horario_medico WHERE Id_medico=?");
             $stmt->execute([$idMed]);
 
@@ -400,7 +412,8 @@ if ($action === 'delete_medico') {
         json_out(['ok'=>true,'msg'=>$mensaje]);
     } catch (Throwable $e) {
         if ($pdo->inTransaction()) $pdo->rollBack();
-        json_out(['ok'=>false,'error'=>$e->getMessage()],500);
+        error_log("Error deleting medico: " . $e->getMessage());
+        json_out(['ok'=>false,'error'=>'No se puede eliminar: ' . $e->getMessage()],500);
     }
 }
   // ========== SECRETARIAS ==========
@@ -663,6 +676,20 @@ if ($action === 'delete_medico') {
 
       $fechaHora = "$date $time:00";
 
+      // ✅ NUEVA VALIDACIÓN: Verificar si el paciente ya tiene turno activo con este médico
+      $chkExisting = $pdo->prepare("
+        SELECT COUNT(*) FROM turno 
+        WHERE Id_paciente = ? 
+        AND Id_medico = ? 
+        AND (estado IS NULL OR estado = 'reservado')
+        AND fecha >= NOW()
+      ");
+      $chkExisting->execute([$pacId, $medId]);
+      
+      if ($chkExisting->fetchColumn() > 0) {
+        throw new Exception('Este paciente ya tiene un turno activo con este médico. Debe cancelar o completar el turno anterior.');
+      }
+
       $check = $pdo->prepare("
         SELECT 1 FROM turno 
         WHERE fecha=? AND Id_medico=? AND (estado IS NULL OR estado <> 'cancelado')
@@ -682,6 +709,7 @@ if ($action === 'delete_medico') {
       json_out(['ok'=>false,'error'=>$e->getMessage()],500);
     }
   }
+
 
   if ($action === 'cancel_turno') {
     ensure_csrf();
