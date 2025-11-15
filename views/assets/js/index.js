@@ -552,7 +552,9 @@
     }
   }
 
-  function renderAppointments(rows) {
+  // En views/assets/js/index.js, reemplazar renderAppointments con esto:
+
+function renderAppointments(rows) {
     tblBody.innerHTML = '';
 
     if (rows.length === 0) {
@@ -577,8 +579,30 @@
 
       const [fecha, hora] = r.fecha.split(' ');
       const canCancel = canCancelTurno(fecha, hora);
+      
+      // Determinar badge según estado
+      let badgeClass = 'warn';
+      let estadoTexto = r.estado || 'pendiente';
+      let estadoIcono = '⏳';
+      
+      if (r.estado === 'confirmado') {
+        badgeClass = 'ok';
+        estadoTexto = 'confirmado';
+        estadoIcono = '✅';
+      } else if (r.estado === 'rechazado') {
+        badgeClass = 'err';
+        estadoTexto = 'rechazado';
+        estadoIcono = '❌';
+      } else if (r.estado === 'pendiente_confirmacion') {
+        badgeClass = 'warn';
+        estadoTexto = 'pendiente confirmación';
+        estadoIcono = '⏳';
+      }
+      
+      // Solo permitir cancelar/reprogramar si está confirmado o pendiente
+      const puedeModificar = (r.estado === 'confirmado' || r.estado === 'pendiente_confirmacion');
 
-      const acciones = (r.estado === 'reservado') ?
+      const acciones = puedeModificar ?
         `
           <button class="btn ghost btn-cancel" data-id="${r.Id_turno}" ${!canCancel ? 'disabled title="Debe cancelar con 24hs de anticipación"' : ''}>
             ${canCancel ? '❌ Cancelar' : '🔒 Cancelar'}
@@ -596,7 +620,7 @@
         </td>
         <td>${escapeHtml(r.medico || '')}</td>
         <td>${escapeHtml(r.especialidad || '')}</td>
-        <td><span class="badge ${r.estado === 'reservado' ? 'ok' : 'warn'}">${escapeHtml(r.estado || '')}</span></td>
+        <td><span class="badge ${badgeClass}">${estadoIcono} ${escapeHtml(estadoTexto)}</span></td>
         <td class="row-actions">${acciones}</td>
       `;
       tblBody.appendChild(tr);

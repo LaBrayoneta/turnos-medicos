@@ -512,7 +512,9 @@
     }
   }
 
-  function renderAgenda(rows){
+  // ========== REEMPLAZAR LA FUNCIÓN renderAgenda EN admin.js ==========
+
+function renderAgenda(rows){
     if(!tblAgendaBody) return;
     tblAgendaBody.innerHTML='';
     if (!rows.length){
@@ -525,27 +527,54 @@
     if(noData) noData.style.display = 'none';
     
     rows.forEach(r=>{
-      const reservado = (r.estado==='reservado');
+      const pendiente = (r.estado === 'pendiente_confirmacion');
+      const confirmado = (r.estado === 'confirmado');
+      const rechazado = (r.estado === 'rechazado');
+      
       const tr = document.createElement('tr');
+      
+      // Determinar color del badge según estado
+      let badgeClass = 'warn';
+      let estadoTexto = r.estado || 'pendiente';
+      
+      if (confirmado) {
+        badgeClass = 'ok';
+        estadoTexto = 'confirmado';
+      } else if (rechazado) {
+        badgeClass = 'err';
+        estadoTexto = 'rechazado';
+      } else if (pendiente) {
+        badgeClass = 'warn';
+        estadoTexto = 'pendiente confirmación';
+      }
+      
       tr.innerHTML = `
         <td>
           <div style="font-weight:600">${esc(r.fecha_fmt||'')}</div>
         </td>
         <td>${esc(r.paciente||'')}</td>
-        <td><span class="badge ${reservado?'ok':'warn'}">${esc(r.estado||'')}</span></td>
+        <td><span class="badge ${badgeClass}">${esc(estadoTexto)}</span></td>
         <td class="row-actions">
-          ${reservado ? `
+          ${pendiente ? `
+            <button class="btn primary btn-confirmar" data-id="${r.Id_turno}">✅ Confirmar</button>
+            <button class="btn danger btn-rechazar" data-id="${r.Id_turno}">❌ Rechazar</button>
+            <button class="btn ghost btn-reprog" data-id="${r.Id_turno}" data-med="${r.Id_medico||''}">🔄 Reprogramar</button>
+            <button class="btn ghost btn-delete" data-id="${r.Id_turno}">🗑️ Eliminar</button>
+          ` : confirmado ? `
             <button class="btn ghost btn-cancel" data-id="${r.Id_turno}">❌ Cancelar</button>
             <button class="btn ghost btn-reprog" data-id="${r.Id_turno}" data-med="${r.Id_medico||''}">🔄 Reprogramar</button>
-            <button class="btn danger btn-delete" data-id="${r.Id_turno}">🗑️ Eliminar</button>
+            <button class="btn ghost btn-delete" data-id="${r.Id_turno}">🗑️ Eliminar</button>
           ` : `
-            <button class="btn danger btn-delete" data-id="${r.Id_turno}">🗑️ Eliminar</button>
+            <button class="btn ghost btn-delete" data-id="${r.Id_turno}">🗑️ Eliminar</button>
           `}
         </td>`;
-      if(!reservado) tr.classList.add('is-cancelado');
+      
+      if (rechazado) tr.style.opacity = '0.6';
+      
       tblAgendaBody.appendChild(tr);
     });
 
+    // Event listeners existentes
     $$('.btn-cancel').forEach(b=>b.addEventListener('click', ()=> cancelTurno(b.dataset.id)));
     $$('.btn-delete').forEach(b=>b.addEventListener('click', ()=> deleteTurno(b.dataset.id)));
     $$('.btn-reprog').forEach(b=>{
@@ -567,26 +596,101 @@
         reprogSection?.scrollIntoView({behavior:'smooth', block:'center'});
       });
     });
+    
+    // ========== NUEVOS EVENT LISTENERS: CONFIRMAR/RECHAZAR ==========
+    $$('.btn-confirmar').forEach(b => {
+      b.addEventListener('click', () => confirmarTurno(b.dataset.id));
+    });
+    
+    $$('.btn-rechazar').forEach(b => {
+      b.addEventListener('click', () => rechazarTurno(b.dataset.id));
+    });
   }
 
-  async function cancelTurno(id){
-    if (!confirm('¿Cancelar este turno?')) return;
-    try {
-      const fd = new FormData();
-      fd.append('action','cancel_turno');
-      fd.append('turno_id', id);
-      fd.append('csrf_token', csrf);
-      
-      const r = await fetch('admin.php', { method:'POST', body:fd, headers:{ 'Accept':'application/json' }});
-      const data = await r.json();
-      if(!data.ok) throw new Error(data.error||'Error');
-      
-      setMsg(msgTurns, '✅ Turno cancelado', true);
-      await loadAgenda();
-    } catch (e) {
-      setMsg(msgTurns, e.message, false);
-    }
+// ========== NUEVA FUNCIÓN: CONFIRMAR TURNO ==========
+async function confirmarTurno(turnoId) {
+  if (!confirm('¿Confirmar este turno?\n\nSe enviará un email de confirmación al paciente.')) {
+    return;
   }
+  
+  try {
+    const fd = new FormData();
+    fd.append('action', 'confirmar_turno');
+    fd.append('turno_id', turnoId);
+    fd.append('csrf_token', csrf);
+    
+    setMsg(msgTurns, '⏳ Confirmando turno y enviando email...', true);
+    
+    const r = await fetch('admin.php', { 
+      method: 'POST', 
+      body: fd, 
+      headers: { 'Accept': 'application/json' }
+    });
+    
+    const data = await r.json();
+    
+    if (!data.ok) throw new Error(data.error || 'Error');
+    
+    setMsg(msgTurns, '✅ ' + (data.msg || 'Turno confirmado'), true);
+    await loadAgenda();
+    
+  } catch (e) {
+    console.error('Error:', e);
+    setMsg(msgTurns, '❌ ' + e.message, false);
+  }
+}
+
+// ========== NUEVA FUNCIÓN: RECHAZAR TURNO ==========
+async function rechazarTurno(turnoId) {
+  const motivo = prompt(
+    '¿Por qué motivo rechazas este turno?\n\n' +
+    'Este motivo se enviará al paciente por email.\n' +
+    'Mínimo 10 caracteres, máximo 500.'
+  );
+  
+  if (!motivo) return;
+  
+  if (motivo.trim().length < 10) {
+    alert('❌ El motivo debe tener al menos 10 caracteres');
+    return;
+  }
+  
+  if (motivo.trim().length > 500) {
+    alert('❌ El motivo es demasiado largo (máximo 500 caracteres)');
+    return;
+  }
+  
+  if (!confirm(`¿Confirmas el rechazo?\n\nMotivo: ${motivo}\n\nSe enviará un email al paciente.`)) {
+    return;
+  }
+  
+  try {
+    const fd = new FormData();
+    fd.append('action', 'rechazar_turno');
+    fd.append('turno_id', turnoId);
+    fd.append('motivo', motivo.trim());
+    fd.append('csrf_token', csrf);
+    
+    setMsg(msgTurns, '⏳ Rechazando turno y enviando email...', true);
+    
+    const r = await fetch('admin.php', { 
+      method: 'POST', 
+      body: fd, 
+      headers: { 'Accept': 'application/json' }
+    });
+    
+    const data = await r.json();
+    
+    if (!data.ok) throw new Error(data.error || 'Error');
+    
+    setMsg(msgTurns, '✅ ' + (data.msg || 'Turno rechazado'), true);
+    await loadAgenda();
+    
+  } catch (e) {
+    console.error('Error:', e);
+    setMsg(msgTurns, '❌ ' + e.message, false);
+  }
+}
 
   async function deleteTurno(id){
     if (!confirm('¿ELIMINAR permanentemente? No se puede deshacer.')) return;

@@ -367,7 +367,11 @@ CREATE TABLE `turno` (
   `Id_medico` bigint unsigned NOT NULL,
   `Id_secretaria` bigint unsigned DEFAULT NULL,
   `fecha` timestamp NOT NULL,
-  `estado` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT 'reservado',
+  `estado` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT 'pendiente_confirmacion',
+  `fecha_confirmacion` timestamp NULL DEFAULT NULL,
+  `Id_staff_confirma` bigint unsigned DEFAULT NULL,
+  `motivo_rechazo` text COLLATE utf8mb4_unicode_ci,
+  `email_enviado` tinyint(1) DEFAULT '0',
   `atendido` tinyint(1) DEFAULT '0',
   `fecha_atencion` timestamp NULL DEFAULT NULL,
   `Id_medico_atencion` bigint unsigned DEFAULT NULL,
@@ -385,11 +389,13 @@ CREATE TABLE `turno` (
   KEY `idx_estado` (`estado`),
   KEY `idx_atendido` (`atendido`),
   KEY `idx_turno_paciente_medico_estado_fecha` (`Id_paciente`,`Id_medico`,`estado`,`fecha`),
+  KEY `idx_email_enviado` (`email_enviado`),
   CONSTRAINT `turno_ibfk_1` FOREIGN KEY (`Id_paciente`) REFERENCES `paciente` (`Id_paciente`) ON DELETE RESTRICT,
   CONSTRAINT `turno_ibfk_2` FOREIGN KEY (`Id_medico`) REFERENCES `medico` (`Id_medico`) ON DELETE RESTRICT,
   CONSTRAINT `turno_ibfk_3` FOREIGN KEY (`Id_secretaria`) REFERENCES `secretaria` (`Id_secretaria`) ON DELETE SET NULL,
   CONSTRAINT `turno_ibfk_4` FOREIGN KEY (`Id_medico_atencion`) REFERENCES `medico` (`Id_medico`) ON DELETE SET NULL,
-  CONSTRAINT `turno_chk_1` CHECK ((`estado` in (_utf8mb4'reservado',_utf8mb4'cancelado',_utf8mb4'completado',_utf8mb4'ausente')))
+  CONSTRAINT `chk_turno_estado_nuevo` CHECK ((`estado` in (_utf8mb4'pendiente_confirmacion',_utf8mb4'confirmado',_utf8mb4'rechazado',_utf8mb4'reservado',_utf8mb4'cancelado',_utf8mb4'completado',_utf8mb4'ausente'))),
+  CONSTRAINT `turno_chk_estados_confirmacion` CHECK ((`estado` in (_utf8mb4'pendiente_confirmacion',_utf8mb4'confirmado',_utf8mb4'rechazado',_utf8mb4'reservado',_utf8mb4'cancelado',_utf8mb4'completado',_utf8mb4'ausente')))
 ) ENGINE=InnoDB AUTO_INCREMENT=7 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -399,7 +405,7 @@ CREATE TABLE `turno` (
 
 LOCK TABLES `turno` WRITE;
 /*!40000 ALTER TABLE `turno` DISABLE KEYS */;
-INSERT INTO `turno` VALUES (1,1,3,NULL,'2025-11-27 12:30:00','reservado',1,'2025-11-15 04:09:04',3,NULL,'2025-11-14 04:05:48','2025-11-15 04:09:04');
+INSERT INTO `turno` VALUES (1,1,3,NULL,'2025-11-27 12:30:00','pendiente_confirmacion',NULL,NULL,NULL,0,1,'2025-11-15 04:09:04',3,NULL,'2025-11-14 04:05:48','2025-11-15 19:55:36');
 /*!40000 ALTER TABLE `turno` ENABLE KEYS */;
 UNLOCK TABLES;
 /*!50003 SET @saved_cs_client      = @@character_set_client */ ;
@@ -646,4 +652,4 @@ UNLOCK TABLES;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2025-11-15 16:46:04
+-- Dump completed on 2025-11-15 17:19:46

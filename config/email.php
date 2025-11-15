@@ -1,40 +1,36 @@
 <?php
 /**
- * config/email.php - Configuración de Email con PHPMailer
+ * config/email.php - Sistema de Notificaciones por Email
  * 
- * INSTALACIÓN:
+ * INSTALACIÓN DE PHPMAILER:
  * composer require phpmailer/phpmailer
  * 
- * O descarga manual desde:
- * https://github.com/PHPMailer/PHPMailer/archive/refs/heads/master.zip
+ * CONFIGURACIÓN DE GMAIL:
+ * 1. Ir a https://myaccount.google.com/security
+ * 2. Activar "Verificación en 2 pasos"
+ * 3. Buscar "Contraseñas de aplicaciones"
+ * 4. Crear contraseña para "Correo"
+ * 5. Usar esa contraseña en SMTP_PASSWORD
  */
 
-// Configuración de email (Gmail SMTP)
+// ========== CONFIGURACIÓN ==========
 define('SMTP_HOST', 'smtp.gmail.com');
 define('SMTP_PORT', 587);
 define('SMTP_SECURE', 'tls');
 define('SMTP_USERNAME', 'tuclinica@gmail.com'); // ⚠️ CAMBIAR
-define('SMTP_PASSWORD', 'tu_contraseña_app'); // ⚠️ CAMBIAR (usar contraseña de aplicación)
+define('SMTP_PASSWORD', 'tu_contraseña_app_16_digitos'); // ⚠️ CAMBIAR
 define('SMTP_FROM_EMAIL', 'tuclinica@gmail.com');
 define('SMTP_FROM_NAME', 'Clínica Vida Plena');
 
-// ========== INSTRUCCIONES PARA GMAIL ==========
-/*
-1. Ir a https://myaccount.google.com/security
-2. Activar "Verificación en 2 pasos"
-3. Buscar "Contraseñas de aplicaciones"
-4. Crear una contraseña para "Correo"
-5. Copiar la contraseña de 16 dígitos y usarla en SMTP_PASSWORD
-*/
-
-require_once __DIR__ . '/../vendor/autoload.php'; // Si usas Composer
+// Cargar PHPMailer
+require_once __DIR__ . '/../vendor/autoload.php';
 
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\SMTP;
 use PHPMailer\PHPMailer\Exception;
 
 /**
- * Enviar email usando PHPMailer
+ * Función principal para enviar emails
  */
 function enviarEmail($destinatario, $nombreDestinatario, $asunto, $cuerpoHTML) {
     $mail = new PHPMailer(true);
@@ -49,7 +45,7 @@ function enviarEmail($destinatario, $nombreDestinatario, $asunto, $cuerpoHTML) {
         $mail->SMTPSecure = SMTP_SECURE;
         $mail->Port       = SMTP_PORT;
         
-        // Configuración de caracteres
+        // Configuración de encoding
         $mail->CharSet = 'UTF-8';
         $mail->Encoding = 'base64';
         
@@ -63,7 +59,7 @@ function enviarEmail($destinatario, $nombreDestinatario, $asunto, $cuerpoHTML) {
         $mail->isHTML(true);
         $mail->Subject = $asunto;
         $mail->Body    = $cuerpoHTML;
-        $mail->AltBody = strip_tags($cuerpoHTML); // Versión texto plano
+        $mail->AltBody = strip_tags($cuerpoHTML);
         
         $mail->send();
         
@@ -77,10 +73,11 @@ function enviarEmail($destinatario, $nombreDestinatario, $asunto, $cuerpoHTML) {
 }
 
 /**
- * Plantilla: Turno Confirmado
+ * PLANTILLA: Turno Confirmado
  */
 function emailTurnoConfirmado($datosEmail) {
-    extract($datosEmail); // $nombrePaciente, $fecha, $hora, $nombreMedico, $especialidad
+    extract($datosEmail);
+    // $nombrePaciente, $fecha, $hora, $nombreMedico, $especialidad, $nombreStaff
     
     $html = "
     <!DOCTYPE html>
@@ -110,8 +107,8 @@ function emailTurnoConfirmado($datosEmail) {
             
             <div class='content'>
                 <div class='status'>
-                    <h2>✅ Turno Confirmado</h2>
-                    <p>Tu turno ha sido confirmado exitosamente.</p>
+                    <h2>✅ ¡Tu turno ha sido CONFIRMADO!</h2>
+                    <p>Tu solicitud de turno ha sido revisada y aprobada por nuestro equipo.</p>
                 </div>
                 
                 <p>Estimado/a <strong>$nombrePaciente</strong>,</p>
@@ -125,18 +122,22 @@ function emailTurnoConfirmado($datosEmail) {
                     <div class='info-row'><strong>🏥 Especialidad:</strong> $especialidad</div>
                 </div>
                 
-                <h3>📋 Recomendaciones:</h3>
+                <h3>📋 Recordatorios Importantes:</h3>
                 <ul>
-                    <li>Llegar 10 minutos antes de la hora programada</li>
-                    <li>Traer DNI y carnet de obra social</li>
+                    <li><strong>Llegar 10 minutos antes</strong> de la hora programada</li>
+                    <li>Traer <strong>DNI y carnet de obra social</strong></li>
                     <li>Si tiene estudios previos, traerlos</li>
-                    <li>En caso de no poder asistir, cancelar con 24hs de anticipación</li>
+                    <li>En caso de no poder asistir, <strong>cancelar con 24hs de anticipación</strong></li>
+                    <li>Usar barbijo/tapabocas en las instalaciones</li>
                 </ul>
+                
+                <p style='margin-top: 20px;'>Si necesitas reprogramar o tienes alguna consulta, no dudes en contactarnos.</p>
             </div>
             
             <div class='footer'>
                 <p>Este es un correo automático, por favor no responder.</p>
                 <p><strong>Clínica Vida Plena</strong> | Tel: (291) 123-4567 | info@clinicavidaplena.com</p>
+                <p style='margin-top: 10px; font-size: 12px;'>Confirmado por: $nombreStaff</p>
             </div>
         </div>
     </body>
@@ -147,10 +148,11 @@ function emailTurnoConfirmado($datosEmail) {
 }
 
 /**
- * Plantilla: Turno Rechazado
+ * PLANTILLA: Turno Rechazado
  */
 function emailTurnoRechazado($datosEmail) {
-    extract($datosEmail); // $nombrePaciente, $fecha, $hora, $motivo, $nombreStaff
+    extract($datosEmail);
+    // $nombrePaciente, $fecha, $hora, $motivo, $nombreStaff
     
     $html = "
     <!DOCTYPE html>
@@ -179,8 +181,8 @@ function emailTurnoRechazado($datosEmail) {
             
             <div class='content'>
                 <div class='status'>
-                    <h2>❌ Turno No Confirmado</h2>
-                    <p>Lamentablemente no pudimos confirmar tu turno.</p>
+                    <h2>❌ Tu turno no pudo ser confirmado</h2>
+                    <p>Lamentablemente no pudimos confirmar tu solicitud de turno.</p>
                 </div>
                 
                 <p>Estimado/a <strong>$nombrePaciente</strong>,</p>
@@ -194,7 +196,7 @@ function emailTurnoRechazado($datosEmail) {
                 
                 <p><strong>¿Qué puedo hacer?</strong></p>
                 <ul>
-                    <li>Puedes solicitar un nuevo turno desde nuestro sistema</li>
+                    <li>Puedes <strong>solicitar un nuevo turno</strong> desde nuestro sistema</li>
                     <li>Contactarnos telefónicamente para más opciones</li>
                     <li>Consultar disponibilidad con otros profesionales</li>
                 </ul>
@@ -209,7 +211,7 @@ function emailTurnoRechazado($datosEmail) {
             <div class='footer'>
                 <p>Este es un correo automático, por favor no responder.</p>
                 <p><strong>Clínica Vida Plena</strong> | Tel: (291) 123-4567 | info@clinicavidaplena.com</p>
-                <p style='margin-top: 10px; font-size: 12px;'>Atendido por: $nombreStaff</p>
+                <p style='margin-top: 10px; font-size: 12px;'>Procesado por: $nombreStaff</p>
             </div>
         </div>
     </body>
@@ -220,11 +222,11 @@ function emailTurnoRechazado($datosEmail) {
 }
 
 /**
- * Función helper para enviar email de confirmación de turno
+ * Función helper para notificar confirmación de turno
  */
-function notificarTurnoConfirmado($turnoId, PDO $pdo) {
+function notificarTurnoConfirmado($turnoId, $staffNombre, PDO $pdo) {
     try {
-        // Obtener datos del turno
+        // Obtener datos del turno con información del paciente
         $stmt = $pdo->prepare("
             SELECT 
                 t.fecha,
@@ -249,26 +251,35 @@ function notificarTurnoConfirmado($turnoId, PDO $pdo) {
             return ['ok' => false, 'error' => 'Turno no encontrado'];
         }
         
-        // Formatear datos
+        // Formatear fecha y hora
         $fechaObj = new DateTime($turno['fecha']);
         $datosEmail = [
             'nombrePaciente' => trim($turno['paciente_apellido'] . ', ' . $turno['paciente_nombre']),
             'fecha' => $fechaObj->format('d/m/Y'),
             'hora' => $fechaObj->format('H:i'),
             'nombreMedico' => 'Dr/a. ' . trim($turno['medico_apellido'] . ', ' . $turno['medico_nombre']),
-            'especialidad' => $turno['especialidad']
+            'especialidad' => $turno['especialidad'] ?? 'Sin especialidad',
+            'nombreStaff' => $staffNombre
         ];
         
         // Generar HTML
         $html = emailTurnoConfirmado($datosEmail);
         
         // Enviar
-        return enviarEmail(
+        $resultado = enviarEmail(
             $turno['paciente_email'],
             $datosEmail['nombrePaciente'],
             '✅ Turno Confirmado - Clínica Vida Plena',
             $html
         );
+        
+        // Marcar email como enviado
+        if ($resultado['ok']) {
+            $stmt = $pdo->prepare("UPDATE turno SET email_enviado = 1 WHERE Id_turno = ?");
+            $stmt->execute([$turnoId]);
+        }
+        
+        return $resultado;
         
     } catch (Throwable $e) {
         error_log("Error en notificarTurnoConfirmado: " . $e->getMessage());
@@ -277,7 +288,7 @@ function notificarTurnoConfirmado($turnoId, PDO $pdo) {
 }
 
 /**
- * Función helper para enviar email de rechazo de turno
+ * Función helper para notificar rechazo de turno
  */
 function notificarTurnoRechazado($turnoId, $motivo, $staffNombre, PDO $pdo) {
     try {
@@ -314,12 +325,20 @@ function notificarTurnoRechazado($turnoId, $motivo, $staffNombre, PDO $pdo) {
         $html = emailTurnoRechazado($datosEmail);
         
         // Enviar
-        return enviarEmail(
+        $resultado = enviarEmail(
             $turno['paciente_email'],
             $datosEmail['nombrePaciente'],
             '❌ Turno No Confirmado - Clínica Vida Plena',
             $html
         );
+        
+        // Marcar email como enviado
+        if ($resultado['ok']) {
+            $stmt = $pdo->prepare("UPDATE turno SET email_enviado = 1 WHERE Id_turno = ?");
+            $stmt->execute([$turnoId]);
+        }
+        
+        return $resultado;
         
     } catch (Throwable $e) {
         error_log("Error en notificarTurnoRechazado: " . $e->getMessage());
