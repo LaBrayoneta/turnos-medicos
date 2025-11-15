@@ -1,4 +1,4 @@
-// views/assets/js/medico_panel.js - Panel Médico COMPLETO
+// views/assets/js/medico_panel.js - PANEL MÉDICO MEJORADO Y COMPLETO
 
 (function() {
     'use strict';
@@ -7,12 +7,25 @@
     let medicoId = null;
     let csrf = '';
     let medicamentos = [];
+    let medicamentosDB = []; // Medicamentos de la BD para autocomplete
 
     // Inicializar
     function init() {
         // Obtener datos del DOM
         medicoId = parseInt(document.body.dataset.medicoId);
         csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+        
+        // Cargar medicamentos de la BD
+        const medicamentosData = document.querySelector('meta[name="medicamentos-data"]')?.getAttribute('content');
+        if (medicamentosData) {
+            try {
+                medicamentosDB = JSON.parse(medicamentosData);
+                console.log('✅ Medicamentos cargados:', medicamentosDB.length);
+            } catch (e) {
+                console.error('Error parseando medicamentos:', e);
+                medicamentosDB = [];
+            }
+        }
 
         if (!medicoId) {
             console.error('ID de médico no encontrado');
@@ -26,6 +39,7 @@
         setupModal();
         setupMedicamentos();
         setupFiltros();
+        setupAutocomplete();
 
         // Cargar datos iniciales
         loadStats();
@@ -73,6 +87,62 @@
         document.getElementById('btnBuscarHistorial')?.addEventListener('click', loadHistorial);
     }
 
+    // Configurar autocomplete de medicamentos
+    function setupAutocomplete() {
+        const input = document.getElementById('recetaMedicamento');
+        const autocompleteDiv = document.getElementById('medicamentoAutocomplete');
+        
+        if (!input || !autocompleteDiv) return;
+
+        input.addEventListener('input', function() {
+            const query = this.value.trim().toLowerCase();
+            
+            if (query.length < 2) {
+                autocompleteDiv.style.display = 'none';
+                return;
+            }
+
+            const filtered = medicamentosDB.filter(med => 
+                med.nombre.toLowerCase().includes(query)
+            );
+
+            if (filtered.length === 0) {
+                autocompleteDiv.style.display = 'none';
+                return;
+            }
+
+            autocompleteDiv.innerHTML = '';
+            filtered.slice(0, 8).forEach(med => {
+                const item = document.createElement('div');
+                item.className = 'autocomplete-item';
+                item.innerHTML = `
+                    <strong>${escapeHtml(med.nombre)}</strong>
+                    ${med.presentacion ? `<small>${escapeHtml(med.presentacion)}</small>` : ''}
+                    ${med.dosis_usual ? `<small style="color: var(--primary);">Dosis usual: ${escapeHtml(med.dosis_usual)}</small>` : ''}
+                `;
+                
+                item.addEventListener('click', () => {
+                    input.value = med.nombre;
+                    if (med.dosis_usual) {
+                        document.getElementById('recetaIndicacion').value = med.dosis_usual;
+                    }
+                    autocompleteDiv.style.display = 'none';
+                });
+                
+                autocompleteDiv.appendChild(item);
+            });
+
+            autocompleteDiv.style.display = 'block';
+        });
+
+        // Cerrar autocomplete al hacer click fuera
+        document.addEventListener('click', (e) => {
+            if (!input.contains(e.target) && !autocompleteDiv.contains(e.target)) {
+                autocompleteDiv.style.display = 'none';
+            }
+        });
+    }
+
     // Formatear hora 12h
     function formatHour12(time24) {
         if (!time24) return '';
@@ -83,11 +153,17 @@
         return `${h}:${minutes} ${ampm}`;
     }
 
-    // Formatear fecha
+    // Formatear fecha completa
     function formatDate(dateStr) {
         const date = new Date(dateStr + 'T00:00:00');
         const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
         return date.toLocaleDateString('es-AR', options);
+    }
+
+    // Formatear fecha corta
+    function formatDateShort(dateStr) {
+        const date = new Date(dateStr + 'T00:00:00');
+        return date.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
     }
 
     // Cargar estadísticas
@@ -176,28 +252,42 @@
                 <div class="turno-header">
                     <div class="paciente-info">
                         <div class="paciente-nombre">${escapeHtml(turno.paciente_nombre)}</div>
-                        <small style="color:var(--muted)">
-                            DNI: ${escapeHtml(turno.paciente_dni)} • ${escapeHtml(turno.obra_social || 'Sin obra social')}
+                        <small style="color:var(--muted); display: block; margin-top: 4px;">
+                            <span style="display: inline-flex; align-items: center; gap: 4px;">
+                                📋 DNI: ${escapeHtml(turno.paciente_dni)}
+                            </span>
+                            <span style="margin: 0 8px;">•</span>
+                            <span style="display: inline-flex; align-items: center; gap: 4px;">
+                                🏥 ${escapeHtml(turno.obra_social || 'Sin obra social')}
+                            </span>
                         </small>
-                        ${turno.libreta ? `<br><small style="color:var(--muted)">Libreta: ${escapeHtml(turno.libreta)}</small>` : ''}
+                        ${turno.libreta ? `
+                            <small style="color:var(--muted); display: block; margin-top: 4px;">
+                                📖 Libreta: ${escapeHtml(turno.libreta)}
+                            </small>
+                        ` : ''}
                     </div>
                     <div style="text-align:right;">
                         <div class="turno-hora">${hora12}</div>
-                        <small style="color:var(--muted)">${fechaDisplay}</small>
+                        <small style="color:var(--muted); display: block; margin-top: 4px;">${fechaDisplay}</small>
                     </div>
                 </div>
 
                 ${turno.atendido ? `
-                    <div style="background: rgba(16, 185, 129, 0.1); padding: 12px; border-radius: 8px; border-left: 3px solid var(--ok);">
-                        <strong style="color:var(--ok)">✅ Atendido</strong>
-                        <div style="color:var(--muted);font-size:13px;margin-top:4px;">
-                            ${turno.fecha_atencion ? formatDate(turno.fecha_atencion.split(' ')[0]) : ''}
-                        </div>
+                    <div style="background: rgba(16, 185, 129, 0.1); padding: 12px; border-radius: 8px; border-left: 3px solid var(--ok); margin-top: 12px;">
+                        <strong style="color:var(--ok); display: flex; align-items: center; gap: 6px;">
+                            ✅ Paciente Atendido
+                        </strong>
+                        ${turno.fecha_atencion ? `
+                            <div style="color:var(--muted);font-size:13px;margin-top:4px;">
+                                Fecha de atención: ${formatDate(turno.fecha_atencion.split(' ')[0])}
+                            </div>
+                        ` : ''}
                     </div>
                 ` : `
                     <div class="turno-actions">
-                        <button class="btn primary btn-atender" data-turno='${JSON.stringify(turno)}'>
-                            👨‍⚕️ Atender
+                        <button class="btn primary btn-atender" data-turno='${JSON.stringify(turno).replace(/'/g, "&#39;")}'>
+                            👨‍⚕️ Atender Paciente
                         </button>
                     </div>
                 `}
@@ -209,7 +299,7 @@
         // Event listeners
         document.querySelectorAll('.btn-atender').forEach(btn => {
             btn.addEventListener('click', () => {
-                const turno = JSON.parse(btn.dataset.turno);
+                const turno = JSON.parse(btn.dataset.turno.replace(/&#39;/g, "'"));
                 openModalDiagnostico(turno);
             });
         });
@@ -226,6 +316,7 @@
         document.getElementById('modalPacienteNombre').textContent = turno.paciente_nombre;
         document.getElementById('modalPacienteDNI').textContent = 'DNI: ' + turno.paciente_dni;
         document.getElementById('modalPacienteObra').textContent = turno.obra_social || 'Sin obra social';
+        document.getElementById('modalPacienteLibreta').textContent = turno.libreta ? 'Libreta: ' + turno.libreta : 'Sin libreta';
         document.getElementById('modalTurnoHora').textContent = hora12;
         document.getElementById('modalTurnoFecha').textContent = fechaDisplay;
 
@@ -265,6 +356,14 @@
         document.getElementById('recetaIndicacion').value = '';
 
         renderMedicamentos();
+        
+        // Mensaje de confirmación
+        const msgEl = document.getElementById('msgDiagnostico');
+        msgEl.textContent = '✅ Medicamento agregado a la receta';
+        msgEl.className = 'msg ok';
+        setTimeout(() => {
+            msgEl.textContent = '';
+        }, 2000);
     }
 
     // Renderizar medicamentos
@@ -272,7 +371,7 @@
         const lista = document.getElementById('medicamentosLista');
 
         if (medicamentos.length === 0) {
-            lista.innerHTML = '<p style="color:var(--muted);font-size:14px;padding:12px;">No se agregaron medicamentos</p>';
+            lista.innerHTML = '<p style="color:var(--muted);font-size:14px;padding:12px;text-align:center;">💊 No se han agregado medicamentos a la receta</p>';
             return;
         }
 
@@ -282,11 +381,11 @@
             const div = document.createElement('div');
             div.className = 'medicamento-item';
             div.innerHTML = `
-                <div>
-                    <strong>${escapeHtml(item.medicamento)}</strong>
-                    ${item.indicacion ? `<br><small style="color:var(--muted)">${escapeHtml(item.indicacion)}</small>` : ''}
+                <div class="medicamento-info">
+                    <div class="medicamento-nombre">${escapeHtml(item.medicamento)}</div>
+                    ${item.indicacion ? `<div class="medicamento-indicacion">${escapeHtml(item.indicacion)}</div>` : ''}
                 </div>
-                <button type="button" class="btn danger btn-sm" onclick="window.removeMedicamento(${index})">
+                <button type="button" class="btn danger btn-sm" onclick="window.removeMedicamento(${index})" title="Eliminar medicamento">
                     🗑️
                 </button>
             `;
@@ -296,8 +395,10 @@
 
     // Remover medicamento
     window.removeMedicamento = function(index) {
-        medicamentos.splice(index, 1);
-        renderMedicamentos();
+        if (confirm('¿Eliminar este medicamento de la receta?')) {
+            medicamentos.splice(index, 1);
+            renderMedicamentos();
+        }
     };
 
     // Guardar diagnóstico
@@ -311,11 +412,12 @@
 
         if (!diagnostico) {
             alert('⚠️ El diagnóstico es obligatorio');
+            document.getElementById('diagDiagnostico').focus();
             return;
         }
 
         const msgEl = document.getElementById('msgDiagnostico');
-        msgEl.textContent = '⏳ Guardando...';
+        msgEl.textContent = '⏳ Guardando consulta...';
         msgEl.className = 'msg';
 
         try {
@@ -334,7 +436,7 @@
             const data = await res.json();
 
             if (data.ok) {
-                msgEl.textContent = '✅ ' + (data.mensaje || 'Guardado exitosamente');
+                msgEl.textContent = '✅ ' + (data.mensaje || 'Consulta guardada exitosamente');
                 msgEl.className = 'msg ok';
 
                 setTimeout(() => {
@@ -348,7 +450,7 @@
             }
         } catch (e) {
             console.error('Error:', e);
-            msgEl.textContent = '❌ Error al guardar';
+            msgEl.textContent = '❌ Error al guardar la consulta';
             msgEl.className = 'msg err';
         }
     }
@@ -372,7 +474,7 @@
     // Cargar historial
     async function loadHistorial() {
         const container = document.getElementById('historialContainer');
-        container.innerHTML = '<p style="text-align:center;padding:20px;color:var(--muted)">⏳ Cargando...</p>';
+        container.innerHTML = '<p style="text-align:center;padding:20px;color:var(--muted)">⏳ Cargando historial...</p>';
 
         const desde = document.getElementById('historialDesde').value;
         const hasta = document.getElementById('historialHasta').value;
@@ -390,35 +492,11 @@
                     container.innerHTML = `
                         <div class="empty-state">
                             <div class="empty-icon">📋</div>
-                            <p>No hay atenciones en este período</p>
+                            <p>No hay consultas registradas en este período</p>
                         </div>
                     `;
                 } else {
-                    container.innerHTML = '';
-                    data.historial.forEach(item => {
-                        const div = document.createElement('div');
-                        div.className = 'historial-item';
-                        div.innerHTML = `
-                            <div class="historial-fecha">
-                                📅 ${formatDate(item.fecha.split(' ')[0])} • ${formatHour12(item.fecha.split(' ')[1])}
-                            </div>
-                            <div class="historial-contenido">
-                                <strong>${escapeHtml(item.paciente_nombre)}</strong>
-                                <div style="margin-top: 8px; color: var(--text);">
-                                    <strong>Diagnóstico:</strong> ${escapeHtml(item.diagnostico)}
-                                </div>
-                                ${item.medicamentos ? `
-                                    <div style="margin-top: 8px;">
-                                        <strong>Receta:</strong><br>
-                                        <div style="white-space: pre-line; margin-top: 4px; padding: 8px; background: rgba(10,14,26,0.4); border-radius: 6px; font-size: 13px;">
-                                            ${escapeHtml(item.medicamentos)}
-                                        </div>
-                                    </div>
-                                ` : ''}
-                            </div>
-                        `;
-                        container.appendChild(div);
-                    });
+                    renderHistorial(data.historial, container);
                 }
             } else {
                 container.innerHTML = `<p style="color:var(--err);padding:20px">❌ ${data.error}</p>`;
@@ -427,6 +505,47 @@
             console.error('Error:', e);
             container.innerHTML = '<p style="color:var(--err);padding:20px">❌ Error al cargar historial</p>';
         }
+    }
+
+    // Renderizar historial
+    function renderHistorial(items, container) {
+        container.innerHTML = '';
+        
+        items.forEach(item => {
+            const div = document.createElement('div');
+            div.className = 'historial-item';
+            
+            const [fechaPart, horaPart] = item.fecha.split(' ');
+            const fechaFormat = formatDate(fechaPart);
+            const horaFormat = formatHour12(horaPart);
+            
+            div.innerHTML = `
+                <div class="historial-header">
+                    <div>
+                        <div class="historial-paciente">${escapeHtml(item.paciente_nombre)}</div>
+                        <div class="historial-fecha">
+                            ${fechaFormat} • ${horaFormat}
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="historial-section">
+                    <div class="historial-section-title">📋 Diagnóstico</div>
+                    <div class="historial-section-content">${escapeHtml(item.diagnostico)}</div>
+                </div>
+                
+                ${item.medicamentos ? `
+                    <div class="historial-section">
+                        <div class="historial-section-title">💊 Medicación Recetada</div>
+                        <div class="historial-medicamentos">
+                            <pre>${escapeHtml(item.medicamentos)}</pre>
+                        </div>
+                    </div>
+                ` : ''}
+            `;
+            
+            container.appendChild(div);
+        });
     }
 
     // Escape HTML
