@@ -119,6 +119,9 @@ $api_base_url = controller('turnos_api.php');
     
     <?php elseif ($rol === 'medico' || $rol === 'secretaria'): ?>
     <!-- ========== MENSAJE PARA STAFF ========== -->
+     <br>
+     <br>
+     <br>
     <section class="card" style="text-align: center; padding: 60px 20px;">
       <div style="font-size: 64px; margin-bottom: 20px;">
         <?= $rol === 'medico' ? '👨‍⚕️' : '👩‍💼' ?>
@@ -131,7 +134,12 @@ $api_base_url = controller('turnos_api.php');
         📊 Ir al Panel Administrativo
       </a>
     </section>
-    
+    <br>
+    <br>
+    <br>
+    <br>
+    <br>
+    <br> 
     <?php else: ?>
     <!-- ========== SISTEMA DE TURNOS PARA PACIENTES ========== -->
     <div class="layout">
