@@ -512,9 +512,7 @@
     }
   }
 
-  // ========== REEMPLAZAR LA FUNCIÓN renderAgenda EN admin.js ==========
-
-function renderAgenda(rows){
+  function renderAgenda(rows){
     if(!tblAgendaBody) return;
     tblAgendaBody.innerHTML='';
     if (!rows.length){
@@ -536,16 +534,20 @@ function renderAgenda(rows){
       // Determinar color del badge según estado
       let badgeClass = 'warn';
       let estadoTexto = r.estado || 'pendiente';
+      let estadoIcono = '⏳';
       
       if (confirmado) {
         badgeClass = 'ok';
         estadoTexto = 'confirmado';
+        estadoIcono = '✅';
       } else if (rechazado) {
         badgeClass = 'err';
         estadoTexto = 'rechazado';
+        estadoIcono = '❌';
       } else if (pendiente) {
         badgeClass = 'warn';
         estadoTexto = 'pendiente confirmación';
+        estadoIcono = '⏳';
       }
       
       tr.innerHTML = `
@@ -553,19 +555,19 @@ function renderAgenda(rows){
           <div style="font-weight:600">${esc(r.fecha_fmt||'')}</div>
         </td>
         <td>${esc(r.paciente||'')}</td>
-        <td><span class="badge ${badgeClass}">${esc(estadoTexto)}</span></td>
+        <td><span class="badge ${badgeClass}">${estadoIcono} ${esc(estadoTexto)}</span></td>
         <td class="row-actions">
           ${pendiente ? `
-            <button class="btn primary btn-confirmar" data-id="${r.Id_turno}">✅ Confirmar</button>
-            <button class="btn danger btn-rechazar" data-id="${r.Id_turno}">❌ Rechazar</button>
-            <button class="btn ghost btn-reprog" data-id="${r.Id_turno}" data-med="${r.Id_medico||''}">🔄 Reprogramar</button>
-            <button class="btn ghost btn-delete" data-id="${r.Id_turno}">🗑️ Eliminar</button>
+            <button class="btn primary btn-sm btn-confirmar" data-id="${r.Id_turno}">✅ Confirmar</button>
+            <button class="btn danger btn-sm btn-rechazar" data-id="${r.Id_turno}">❌ Rechazar</button>
+            <button class="btn ghost btn-sm btn-reprog" data-id="${r.Id_turno}" data-med="${r.Id_medico||''}">🔄 Reprogramar</button>
+            <button class="btn ghost btn-sm btn-delete" data-id="${r.Id_turno}">🗑️ Eliminar</button>
           ` : confirmado ? `
-            <button class="btn ghost btn-cancel" data-id="${r.Id_turno}">❌ Cancelar</button>
-            <button class="btn ghost btn-reprog" data-id="${r.Id_turno}" data-med="${r.Id_medico||''}">🔄 Reprogramar</button>
-            <button class="btn ghost btn-delete" data-id="${r.Id_turno}">🗑️ Eliminar</button>
+            <button class="btn ghost btn-sm btn-cancel" data-id="${r.Id_turno}">❌ Cancelar</button>
+            <button class="btn ghost btn-sm btn-reprog" data-id="${r.Id_turno}" data-med="${r.Id_medico||''}">🔄 Reprogramar</button>
+            <button class="btn ghost btn-sm btn-delete" data-id="${r.Id_turno}">🗑️ Eliminar</button>
           ` : `
-            <button class="btn ghost btn-delete" data-id="${r.Id_turno}">🗑️ Eliminar</button>
+            <button class="btn ghost btn-sm btn-delete" data-id="${r.Id_turno}">🗑️ Eliminar</button>
           `}
         </td>`;
       
@@ -597,16 +599,29 @@ function renderAgenda(rows){
       });
     });
     
-    // ========== NUEVOS EVENT LISTENERS: CONFIRMAR/RECHAZAR ==========
+    // ========== AGREGAR EVENT LISTENERS: CONFIRMAR/RECHAZAR ==========
     $$('.btn-confirmar').forEach(b => {
-      b.addEventListener('click', () => confirmarTurno(b.dataset.id));
+      b.addEventListener('click', () => {
+        if (window.confirmarTurno) {
+          window.confirmarTurno(b.dataset.id);
+        } else {
+          console.error('❌ Función confirmarTurno no encontrada');
+          alert('Error: Sistema de confirmación no disponible');
+        }
+      });
     });
     
     $$('.btn-rechazar').forEach(b => {
-      b.addEventListener('click', () => rechazarTurno(b.dataset.id));
+      b.addEventListener('click', () => {
+        if (window.rechazarTurno) {
+          window.rechazarTurno(b.dataset.id);
+        } else {
+          console.error('❌ Función rechazarTurno no encontrada');
+          alert('Error: Sistema de rechazo no disponible');
+        }
+      });
     });
   }
-
 // ========== NUEVA FUNCIÓN: CONFIRMAR TURNO ==========
 async function confirmarTurno(turnoId) {
   if (!confirm('¿Confirmar este turno?\n\nSe enviará un email de confirmación al paciente.')) {

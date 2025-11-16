@@ -125,26 +125,26 @@ if ($action === 'turnos_hoy') {
         $hoy = date('Y-m-d');
         
         $st = $pdo->prepare("
-            SELECT 
-                t.Id_turno as id,
-                t.fecha,
-                t.atendido,
-                t.fecha_atencion,
-                p.Id_paciente as paciente_id,
-                u.nombre as paciente_nombre,
-                u.apellido as paciente_apellido,
-                u.dni as paciente_dni,
-                os.nombre as obra_social,
-                p.libreta_sanitaria as libreta
-            FROM turno t
-            JOIN paciente p ON p.Id_paciente = t.Id_paciente
-            JOIN usuario u ON u.Id_usuario = p.Id_usuario
-            LEFT JOIN obra_social os ON os.Id_obra_social = p.Id_obra_social
-            WHERE t.Id_medico = ?
-                AND DATE(t.fecha) = ?
-                AND (t.estado IS NULL OR t.estado <> 'cancelado')
-            ORDER BY t.fecha ASC
-        ");
+  SELECT 
+    t.Id_turno as id,
+    t.fecha,
+    t.atendido,
+    t.fecha_atencion,
+    p.Id_paciente as paciente_id,
+    u.nombre as paciente_nombre,
+    u.apellido as paciente_apellido,
+    u.dni as paciente_dni,
+    os.nombre as obra_social,
+    p.libreta_sanitaria as libreta
+  FROM turno t
+  JOIN paciente p ON p.Id_paciente = t.Id_paciente
+  JOIN usuario u ON u.Id_usuario = p.Id_usuario
+  LEFT JOIN obra_social os ON os.Id_obra_social = p.Id_obra_social
+  WHERE t.Id_medico = ?
+      AND DATE(t.fecha) = ?
+      AND t.estado = 'confirmado'
+  ORDER BY t.fecha ASC
+");
         $st->execute([$medicoId, $hoy]);
         
         $turnos = [];
@@ -189,26 +189,26 @@ if ($action === 'turnos_proximos') {
         }
         
         $st = $pdo->prepare("
-            SELECT 
-                t.Id_turno as id,
-                t.fecha,
-                t.atendido,
-                t.fecha_atencion,
-                p.Id_paciente as paciente_id,
-                u.nombre as paciente_nombre,
-                u.apellido as paciente_apellido,
-                u.dni as paciente_dni,
-                os.nombre as obra_social,
-                p.libreta_sanitaria as libreta
-            FROM turno t
-            JOIN paciente p ON p.Id_paciente = t.Id_paciente
-            JOIN usuario u ON u.Id_usuario = p.Id_usuario
-            LEFT JOIN obra_social os ON os.Id_obra_social = p.Id_obra_social
-            WHERE t.Id_medico = ?
-                AND $whereClause
-                AND (t.estado IS NULL OR t.estado <> 'cancelado')
-            ORDER BY t.fecha ASC
-        ");
+  SELECT 
+    t.Id_turno as id,
+    t.fecha,
+    t.atendido,
+    t.fecha_atencion,
+    p.Id_paciente as paciente_id,
+    u.nombre as paciente_nombre,
+    u.apellido as paciente_apellido,
+    u.dni as paciente_dni,
+    os.nombre as obra_social,
+    p.libreta_sanitaria as libreta
+  FROM turno t
+  JOIN paciente p ON p.Id_paciente = t.Id_paciente
+  JOIN usuario u ON u.Id_usuario = p.Id_usuario
+  LEFT JOIN obra_social os ON os.Id_obra_social = p.Id_obra_social
+  WHERE t.Id_medico = ?
+      AND DATE(t.fecha) = ?
+      AND t.estado = 'confirmado'
+  ORDER BY t.fecha ASC
+");
         $st->execute($params);
         
         $turnos = [];

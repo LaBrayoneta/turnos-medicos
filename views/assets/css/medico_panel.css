@@ -866,3 +866,26 @@ textarea {
     gap: 8px;
   }
 }
+
+/* Agregar al final de medico_panel.css */
+
+/* Indicador de última actualización */
+#lastUpdateIndicator {
+  animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+/* Animación de stats actualizadas */
+.stat-number {
+  transition: transform 0.3s, color 0.3s;
+}

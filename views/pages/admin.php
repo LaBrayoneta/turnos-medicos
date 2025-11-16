@@ -100,6 +100,49 @@ if ($isApiRequest) {
 
   $action = $_GET['fetch'] ?? $_POST['action'] ?? '';
 
+  // ========== VERIFICAR TURNO DUPLICADO ==========
+if ($action === 'check_turno_existente') {
+  $pacId = (int)($_GET['paciente_id'] ?? 0);
+  $medId = (int)($_GET['medico_id'] ?? 0);
+  
+  if ($pacId <= 0 || $medId <= 0) {
+    json_out(['ok' => false, 'error' => 'Parámetros inválidos'], 400);
+  }
+  
+  try {
+    $stmt = $pdo->prepare("
+      SELECT 
+        t.Id_turno,
+        t.fecha,
+        t.estado,
+        DATE_FORMAT(t.fecha, '%d/%m/%Y %H:%i') as fecha_fmt
+      FROM turno t
+      WHERE t.Id_paciente = ?
+        AND t.Id_medico = ?
+        AND (t.estado IS NULL OR t.estado IN ('reservado', 'pendiente_confirmacion'))
+        AND t.fecha >= NOW()
+      LIMIT 1
+    ");
+    $stmt->execute([$pacId, $medId]);
+    $turno = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    if ($turno) {
+      json_out([
+        'ok' => true,
+        'tiene_turno' => true,
+        'turno' => $turno
+      ]);
+    } else {
+      json_out([
+        'ok' => true,
+        'tiene_turno' => false
+      ]);
+    }
+  } catch (Throwable $e) {
+    error_log('Error verificando turno: ' . $e->getMessage());
+    json_out(['ok' => false, 'error' => $e->getMessage()], 500);
+  }
+}
   // ========== FETCH: INIT ==========
   if ($action === 'init') {
     try {
@@ -947,14 +990,10 @@ $rolTexto = $isSec ? 'Secretaría' : 'Médico';
   <title>Panel Administrativo - Clínica</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="csrf-token" content="<?= htmlspecialchars($csrf) ?>">
-  
-  <script src="../assets/js/turnos_utils.js"></script>
   <link rel="stylesheet" href="../assets/css/admin.css">
   <link rel="stylesheet" href="../assets/css/theme_light.css">
-  <script src="../assets/js/theme_toggle.js"></script>
 </head>
 <body>
-
 <header class="hdr">
   <div class="brand">🏥 Panel Administrativo</div>
   <div class="who">👤 <?= htmlspecialchars($apellido.', '.$nombre) ?> — <?= $rolTexto ?></div>
@@ -1294,7 +1333,12 @@ $rolTexto = $isSec ? 'Secretaría' : 'Médico';
 }
 </style>
 
+
+<script src="../assets/js/turnos_utils.js"></script>
+<script src="../assets/js/admin_validation.js"></script>
+<script src="../assets/js/admin_fixes.js"></script>
 <script src="../assets/js/admin.js"></script>
+<script src="../assets/js/admin_turno_confirmation.js"></script>
 <script>
 // Sistema de gestión de horarios
 (function(){

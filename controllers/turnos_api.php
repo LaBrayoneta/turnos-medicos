@@ -420,10 +420,10 @@ if ($action === 'book' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($chk->fetch()) json_out(['ok' => false, 'error' => 'Horario ocupado'], 409);
 
     // Insertar turno
-    $ins = $pdo->prepare("
-      INSERT INTO turno (Fecha, Estado, Id_paciente, Id_medico) 
-      VALUES (?, 'reservado', ?, ?)
-    ");
+   $stmt = $pdo->prepare("
+  INSERT INTO turno (fecha, estado, Id_paciente, Id_medico) 
+  VALUES (?, 'pendiente_confirmacion', ?, ?)
+");
     $ins->execute([$fechaHora, $pacId, $med]);
 
     error_log("Turno created: User $uid, Medico $med, Date $fechaHora");
