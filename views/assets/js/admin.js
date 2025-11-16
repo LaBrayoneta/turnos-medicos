@@ -1,7 +1,9 @@
-// admin.js - Panel Administrativo (VERSIÓN CORREGIDA)
-// ✅ CORRECCIÓN: Botones de eliminar ahora funcionan correctamente
+// admin.js - Panel Administrativo (VERSIÓN COMPLETAMENTE CORREGIDA)
+// ✅ Soluciona el problema de congelamiento de pantalla
 
 (function(){
+  'use strict';
+  
   const $ = s => document.querySelector(s);
   const $$ = s => document.querySelectorAll(s);
   const csrf = $('meta[name="csrf-token"]')?.getAttribute('content') || '';
@@ -14,6 +16,7 @@
   let obrasSocialesData = [];
   let selectedTurnoId = null;
   let currentMedicoId = null;
+  let isLoading = false; // ✅ Prevenir carga múltiple
 
   // Elementos DOM principales
   const createSecretariaForm = $('#createSecretariaForm');
@@ -102,15 +105,41 @@
 
   // ========== CARGA INICIAL ==========
   async function loadInit(){
+    if (isLoading) {
+      console.log('⏭️ Ya hay una carga en proceso');
+      return;
+    }
+    
+    isLoading = true;
+    console.log('🔄 Iniciando carga de datos...');
+    
     try {
-      const res = await fetch('admin.php?fetch=init', { headers:{ 'Accept':'application/json' }});
+      const res = await fetch('admin.php?fetch=init', { 
+        headers:{ 'Accept':'application/json' },
+        signal: AbortSignal.timeout(10000) // ✅ Timeout de 10 segundos
+      });
+      
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      
       const data = await res.json();
-      if (!data.ok) { alert('Error cargando datos: ' + (data.error || '')); return; }
+      
+      if (!data.ok) { 
+        throw new Error(data.error || 'Error desconocido'); 
+      }
 
       especialidades = data.especialidades || [];
       medicosData = data.medicos || [];
       secretariasData = data.secretarias || [];
       obrasSocialesData = data.obras_sociales || [];
+
+      console.log('✅ Datos cargados:', {
+        especialidades: especialidades.length,
+        medicos: medicosData.length,
+        secretarias: secretariasData.length,
+        obras: obrasSocialesData.length
+      });
 
       // Cargar especialidades en los selects
       const espSelects = ['#espCreateSelect', '#fEsp', '#editMedEsp'];
@@ -131,9 +160,14 @@
       renderSecretarias(secretariasData);
       renderObras(obrasSocialesData);
       setupDateInputs();
+      
+      console.log('✅ Inicialización completa');
+      
     } catch (e) {
-      console.error('Error en loadInit', e);
-      alert('Error cargando datos iniciales');
+      console.error('❌ Error en loadInit:', e);
+      alert('Error al cargar datos: ' + e.message);
+    } finally {
+      isLoading = false;
     }
   }
 
@@ -173,7 +207,11 @@
         fd.set('action','create_obra_social');
         fd.set('csrf_token', csrf);
 
-        const res = await fetch('admin.php', { method:'POST', body:fd, headers:{ 'Accept':'application/json' }});
+        const res = await fetch('admin.php', { 
+          method:'POST', 
+          body:fd, 
+          headers:{ 'Accept':'application/json' }
+        });
         const data = await res.json();
         if (!data.ok) throw new Error(data.error || 'Error');
         setMsg(msgCreateObra, data.msg || 'Obra social creada', true);
@@ -278,12 +316,10 @@
       tblMedicos.appendChild(tr);
     });
 
-    // ✅ CORRECCIÓN: Asegurar que los event listeners se agreguen
     $$('.btn-edit-med').forEach(b => {
       b.addEventListener('click', ()=> openEditMedico(b.dataset.id));
     });
     
-    // ✅ CORRECCIÓN CRÍTICA: Usar la función global window.deleteMedico
     $$('.btn-delete-med').forEach(b => {
       b.addEventListener('click', () => {
         if (window.deleteMedico) {
@@ -337,12 +373,10 @@
       tblSecretarias.appendChild(tr);
     });
 
-    // ✅ CORRECCIÓN: Asegurar event listeners
     $$('.btn-edit-sec').forEach(b => {
       b.addEventListener('click', ()=> openEditSecretaria(b.dataset.id));
     });
     
-    // ✅ CORRECCIÓN CRÍTICA: Usar la función global window.deleteSecretaria
     $$('.btn-delete-sec').forEach(b => {
       b.addEventListener('click', () => {
         if (window.deleteSecretaria) {
@@ -415,25 +449,6 @@
     });
   }
 
-  async function deleteSecretaria(id){
-    if (!confirm('¿Eliminar esta secretaria? Esta acción no se puede deshacer.')) return;
-    try{
-      const fd = new FormData();
-      fd.append('action', 'delete_secretaria');
-      fd.append('id_secretaria', id);
-      fd.append('csrf_token', csrf);
-
-      const res = await fetch('admin.php', { method:'POST', body:fd, headers:{ 'Accept':'application/json' }});
-      const data = await res.json();
-      if (!data.ok) throw new Error(data.error || 'Error');
-      
-      setMsg(msgCreateSec, data.msg || 'Secretaria eliminada', true);
-      await loadInit();
-    }catch(err){
-      setMsg(msgCreateSec, err.message, false);
-    }
-  }
-
   // ========== TURNOS ==========
   
   async function loadDocs(espId){
@@ -442,14 +457,15 @@
     fMed.disabled=true;
     if(btnNewTurno) btnNewTurno.disabled=true;
     try {
-      const r = await fetch(`admin.php?fetch=doctors&especialidad_id=${encodeURIComponent(espId)}`, { headers:{ 'Accept':'application/json' }});
+      const r = await fetch(`admin.php?fetch=doctors&especialidad_id=${encodeURIComponent(espId)}`, { 
+        headers:{ 'Accept':'application/json' }
+      });
       const data = await r.json();
       if(!data.ok) { setMsg(msgTurns, data.error||'Error', false); return; }
       fMed.innerHTML = `<option value="">Elegí médico…</option>`;
       (data.items||[]).forEach(m=>{
         const opt = document.createElement('option');
         opt.value = m.Id_medico;
-        // ✅ Soportar ambos formatos
         const apellido = m.apellido || m.Apellido || '';
         const nombre = m.nombre || m.Nombre || '';
         opt.textContent = `${apellido}, ${nombre}`;
@@ -531,7 +547,6 @@
       
       const tr = document.createElement('tr');
       
-      // Determinar color del badge según estado
       let badgeClass = 'warn';
       let estadoTexto = r.estado || 'pendiente';
       let estadoIcono = '⏳';
@@ -576,7 +591,6 @@
       tblAgendaBody.appendChild(tr);
     });
 
-    // Event listeners existentes
     $$('.btn-cancel').forEach(b=>b.addEventListener('click', ()=> cancelTurno(b.dataset.id)));
     $$('.btn-delete').forEach(b=>b.addEventListener('click', ()=> deleteTurno(b.dataset.id)));
     $$('.btn-reprog').forEach(b=>{
@@ -599,7 +613,6 @@
       });
     });
     
-    // ========== AGREGAR EVENT LISTENERS: CONFIRMAR/RECHAZAR ==========
     $$('.btn-confirmar').forEach(b => {
       b.addEventListener('click', () => {
         if (window.confirmarTurno) {
@@ -622,90 +635,25 @@
       });
     });
   }
-// ========== NUEVA FUNCIÓN: CONFIRMAR TURNO ==========
-async function confirmarTurno(turnoId) {
-  if (!confirm('¿Confirmar este turno?\n\nSe enviará un email de confirmación al paciente.')) {
-    return;
-  }
-  
-  try {
-    const fd = new FormData();
-    fd.append('action', 'confirmar_turno');
-    fd.append('turno_id', turnoId);
-    fd.append('csrf_token', csrf);
-    
-    setMsg(msgTurns, '⏳ Confirmando turno y enviando email...', true);
-    
-    const r = await fetch('admin.php', { 
-      method: 'POST', 
-      body: fd, 
-      headers: { 'Accept': 'application/json' }
-    });
-    
-    const data = await r.json();
-    
-    if (!data.ok) throw new Error(data.error || 'Error');
-    
-    setMsg(msgTurns, '✅ ' + (data.msg || 'Turno confirmado'), true);
-    await loadAgenda();
-    
-  } catch (e) {
-    console.error('Error:', e);
-    setMsg(msgTurns, '❌ ' + e.message, false);
-  }
-}
 
-// ========== NUEVA FUNCIÓN: RECHAZAR TURNO ==========
-async function rechazarTurno(turnoId) {
-  const motivo = prompt(
-    '¿Por qué motivo rechazas este turno?\n\n' +
-    'Este motivo se enviará al paciente por email.\n' +
-    'Mínimo 10 caracteres, máximo 500.'
-  );
-  
-  if (!motivo) return;
-  
-  if (motivo.trim().length < 10) {
-    alert('❌ El motivo debe tener al menos 10 caracteres');
-    return;
+  async function cancelTurno(id){
+    if (!confirm('¿Cancelar este turno?')) return;
+    try {
+      const fd = new FormData();
+      fd.append('action','cancel_turno');
+      fd.append('turno_id', id);
+      fd.append('csrf_token', csrf);
+      
+      const r = await fetch('admin.php', { method:'POST', body:fd, headers:{ 'Accept':'application/json' }});
+      const data = await r.json();
+      if(!data.ok) throw new Error(data.error||'Error');
+      
+      setMsg(msgTurns, '✅ Turno cancelado', true);
+      await loadAgenda();
+    } catch (e) {
+      setMsg(msgTurns, e.message, false);
+    }
   }
-  
-  if (motivo.trim().length > 500) {
-    alert('❌ El motivo es demasiado largo (máximo 500 caracteres)');
-    return;
-  }
-  
-  if (!confirm(`¿Confirmas el rechazo?\n\nMotivo: ${motivo}\n\nSe enviará un email al paciente.`)) {
-    return;
-  }
-  
-  try {
-    const fd = new FormData();
-    fd.append('action', 'rechazar_turno');
-    fd.append('turno_id', turnoId);
-    fd.append('motivo', motivo.trim());
-    fd.append('csrf_token', csrf);
-    
-    setMsg(msgTurns, '⏳ Rechazando turno y enviando email...', true);
-    
-    const r = await fetch('admin.php', { 
-      method: 'POST', 
-      body: fd, 
-      headers: { 'Accept': 'application/json' }
-    });
-    
-    const data = await r.json();
-    
-    if (!data.ok) throw new Error(data.error || 'Error');
-    
-    setMsg(msgTurns, '✅ ' + (data.msg || 'Turno rechazado'), true);
-    await loadAgenda();
-    
-  } catch (e) {
-    console.error('Error:', e);
-    setMsg(msgTurns, '❌ ' + e.message, false);
-  }
-}
 
   async function deleteTurno(id){
     if (!confirm('¿ELIMINAR permanentemente? No se puede deshacer.')) return;
@@ -758,8 +706,7 @@ async function rechazarTurno(turnoId) {
     try {
       const r = await fetch(`admin.php?${qs.toString()}`, { headers:{ 'Accept':'application/json' }});
       const data = await r.json();
-      if(!data.ok) {
-        setMsg(msgTurns, data.error||'Error', false);
+      if(!data.ok) {setMsg(msgTurns, data.error||'Error', false);
         if(newTime) newTime.innerHTML=`<option value="">Error</option>`;
         return;
       }
@@ -892,7 +839,6 @@ async function rechazarTurno(turnoId) {
       const div = document.createElement('div');
       div.className = 'paciente-item';
       
-      // ✅ Soportar ambos formatos
       const apellido = p.apellido || p.Apellido || '';
       const nombre = p.nombre || p.Nombre || '';
       const dni = p.dni || '';
@@ -985,103 +931,102 @@ async function rechazarTurno(turnoId) {
   });
 
   formCreateTurno?.addEventListener('submit', async (ev) => {
-  ev.preventDefault();
-  setMsg(msgModal, '');
+    ev.preventDefault();
+    setMsg(msgModal, '');
 
-  const pacId = selectedPacienteId.value;
-  const date = turnoDate.value;
-  const time = turnoTime.value;
-  const medId = $('#turnoMedicoId').value;
+    const pacId = selectedPacienteId.value;
+    const date = turnoDate.value;
+    const time = turnoTime.value;
+    const medId = $('#turnoMedicoId').value;
 
-  // Validaciones básicas
-  if (!pacId || pacId === '') {
-    setMsg(msgModal, '❌ Seleccioná un paciente', false);
-    alert('Debés buscar y hacer click en un paciente');
-    return;
-  }
-  if (!date || date === '') {
-    setMsg(msgModal, '❌ Seleccioná una fecha', false);
-    return;
-  }
-  
-  const validation = Utils.isValidTurnoDate(date);
-  if (!validation.valid) {
-    setMsg(msgModal, '❌ ' + validation.error, false);
-    alert('⚠️ ' + validation.error);
-    return;
-  }
-  
-  if (!time || time === '') {
-    setMsg(msgModal, '❌ Seleccioná un horario', false);
-    return;
-  }
+    if (!pacId || pacId === '') {
+      setMsg(msgModal, '❌ Seleccioná un paciente', false);
+      alert('Debés buscar y hacer click en un paciente');
+      return;
+    }
+    if (!date || date === '') {
+      setMsg(msgModal, '❌ Seleccioná una fecha', false);
+      return;
+    }
+    
+    const validation = Utils.isValidTurnoDate(date);
+    if (!validation.valid) {
+      setMsg(msgModal, '❌ ' + validation.error, false);
+      alert('⚠️ ' + validation.error);
+      return;
+    }
+    
+    if (!time || time === '') {
+      setMsg(msgModal, '❌ Seleccioná un horario', false);
+      return;
+    }
 
-  // ✅ NUEVA VALIDACIÓN: Verificar turno existente
-  console.log('🔍 Verificando turnos duplicados...');
-  setMsg(msgModal, '⏳ Verificando turnos existentes...', true);
-  
-  const turnoExistente = await checkPacienteTurnoExistente(pacId, medId);
-  
-  if (turnoExistente) {
+    console.log('🔍 Verificando turnos duplicados...');
+    setMsg(msgModal, '⏳ Verificando turnos existentes...', true);
+    
+    const turnoExistente = await window.checkPacienteTurnoExistente(pacId, medId);
+    
+    if (turnoExistente) {
+      const pacienteNombre = selectedPacienteInfo.textContent.split('\n')[0];
+      const medicoSelect = document.getElementById('fMed');
+      const medicoNombre = medicoSelect ? medicoSelect.options[medicoSelect.selectedIndex].text : 'este médico';
+      
+      setMsg(msgModal, '⚠️ El paciente ya tiene un turno activo con este médico', false);
+      
+      alert(
+        `⚠️ TURNO DUPLICADO DETECTADO\n\n` +
+        `El paciente ${pacienteNombre} ya tiene un turno activo con ${medicoNombre}.\n\n` +
+        `📅 Turno existente: ${turnoExistente.fecha_fmt}\n` +
+        `📍 Estado: ${turnoExistente.estado}\n\n` +
+        `💡 Para crear un nuevo turno, primero debés:\n` +
+        `• Cancelar el turno anterior desde la agenda, o\n` +
+        `• Reprogramarlo en lugar de crear uno nuevo\n\n` +
+        `Esta restricción evita turnos duplicados por médico.`
+      );
+      
+      return;
+    }
+    
+    console.log('✅ Validación pasada - puede crear turno');
+    
     const pacienteNombre = selectedPacienteInfo.textContent.split('\n')[0];
-    const medicoSelect = document.getElementById('fMed');
-    const medicoNombre = medicoSelect ? medicoSelect.options[medicoSelect.selectedIndex].text : 'este médico';
+    if (!confirm(`¿Crear turno?\n\nPaciente: ${pacienteNombre}\n📅 ${Utils.formatDateDisplay(date)}\n🕐 ${Utils.formatHour12(time)}`)) {
+      return;
+    }
     
-    setMsg(msgModal, '⚠️ El paciente ya tiene un turno activo con este médico', false);
+    setMsg(msgModal, '⏳ Creando turno...', true);
     
-    alert(
-      `⚠️ TURNO DUPLICADO DETECTADO\n\n` +
-      `El paciente ${pacienteNombre} ya tiene un turno activo con ${medicoNombre}.\n\n` +
-      `📅 Turno existente: ${turnoExistente.fecha_fmt}\n` +
-      `📍 Estado: ${turnoExistente.estado}\n\n` +
-      `💡 Para crear un nuevo turno, primero debés:\n` +
-      `• Cancelar el turno anterior desde la agenda, o\n` +
-      `• Reprogramarlo en lugar de crear uno nuevo\n\n` +
-      `Esta restricción evita turnos duplicados por médico.`
-    );
-    
-    return; // ⛔ DETENER LA CREACIÓN
-  }
-  
-  console.log('✅ Validación pasada - puede crear turno');
-  
-  const pacienteNombre = selectedPacienteInfo.textContent.split('\n')[0];
-  if (!confirm(`¿Crear turno?\n\nPaciente: ${pacienteNombre}\n📅 ${Utils.formatDateDisplay(date)}\n🕐 ${Utils.formatHour12(time)}`)) {
-    return;
-  }
-  
-  setMsg(msgModal, '⏳ Creando turno...', true);
-  
-  try {
-    const fd = new FormData();
-    fd.append('action', 'create_turno');
-    fd.append('medico_id', medId);
-    fd.append('paciente_id', pacId);
-    fd.append('date', date);
-    fd.append('time', time);
-    fd.append('csrf_token', csrf);
+    try {
+      const fd = new FormData();
+      fd.append('action', 'create_turno');
+      fd.append('medico_id', medId);
+      fd.append('paciente_id', pacId);
+      fd.append('date', date);
+      fd.append('time', time);
+      fd.append('csrf_token', csrf);
 
-    const res = await fetch('admin.php', { 
-      method: 'POST', 
-      body: fd, 
-      headers: { 'Accept': 'application/json' }
-    });
-    
-    const data = await res.json();
-    if (!data.ok) throw new Error(data.error || 'Error');
+      const res = await fetch('admin.php', { 
+        method: 'POST', 
+        body: fd, 
+        headers: { 'Accept': 'application/json' }
+      });
+      
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || 'Error');
 
-    setMsg(msgModal, '✅ ' + (data.msg || 'Turno creado'), true);
-    
-    setTimeout(() => {
-      hideModal(modalCreateTurno);
-      loadAgenda();
-    }, 1500);
-    
-  } catch (e) {
-    console.error('Error creando turno:', e);
-    setMsg(msgModal, '❌ ' + e.message, false);
-  }
-});
+      setMsg(msgModal, '✅ ' + (data.msg || 'Turno creado'), true);
+      
+      setTimeout(() => {
+        hideModal(modalCreateTurno);
+        loadAgenda();
+      }, 1500);
+      
+    } catch (e) {
+      console.error('Error creando turno:', e);
+      setMsg(msgModal, '❌ ' + e.message, false);
+    }
+  });
+
   // ========== CERRAR MODALES ==========
   btnCloseModal?.addEventListener('click', ()=> hideModal(modalCreateTurno));
   btnCloseMedicoModal?.addEventListener('click', ()=> hideModal(modalEditMedico));
@@ -1148,10 +1093,25 @@ async function rechazarTurno(turnoId) {
   fFrom?.addEventListener('change', loadAgenda);
   fTo?.addEventListener('change', loadAgenda);
 
-// ========== INICIAL ==========
+  // ========== INICIALIZACIÓN ==========
   (async function init(){
     console.log('🚀 Inicializando panel admin');
-    await loadInit();
-    console.log('✅ Panel listo');
+    
+    // ✅ Esperar a que el DOM esté completamente listo
+    if (document.readyState === 'loading') {
+      await new Promise(resolve => {
+        document.addEventListener('DOMContentLoaded', resolve);
+      });
+    }
+    
+    console.log('📄 DOM listo, iniciando carga...');
+    
+    try {
+      await loadInit();
+      console.log('✅ Panel listo');
+    } catch (error) {
+      console.error('❌ Error fatal en inicialización:', error);
+      alert('Error al inicializar el panel. Recarga la página.');
+    }
   })();
 })();

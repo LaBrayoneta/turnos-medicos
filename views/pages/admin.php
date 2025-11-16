@@ -1333,12 +1333,6 @@ $rolTexto = $isSec ? 'Secretaría' : 'Médico';
 }
 </style>
 
-
-<script src="../assets/js/turnos_utils.js"></script>
-<script src="../assets/js/admin_validation.js"></script>
-<script src="../assets/js/admin_fixes.js"></script>
-<script src="../assets/js/admin.js"></script>
-<script src="../assets/js/admin_turno_confirmation.js"></script>
 <script>
 // Sistema de gestión de horarios
 (function(){
@@ -1604,5 +1598,309 @@ $rolTexto = $isSec ? 'Secretaría' : 'Médico';
 
 console.log('✅ Admin panel inicializado correctamente');
 </script>
+<script src="../assets/js/turnos_utils.js"></script>
+<script src="../assets/js/admin_validation.js"></script>
+<script src="../assets/js/admin_fixes.js"></script>
+<script src="../assets/js/admin_turno_confirmation.js"></script>
+<script src="../assets/js/admin.js"></script>
+<script>
+// Sistema de gestión de horarios - VERSIÓN CORREGIDA
+(function(){
+  'use strict';
+  
+  const horariosCreate = [];
+  const horariosEdit = [];
+  
+  function formatHour12(time24) {
+    if (!time24) return '';
+    const [hours, minutes] = time24.split(':');
+    let h = parseInt(hours);
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    h = h % 12 || 12;
+    return `${h}:${minutes} ${ampm}`;
+  }
+  
+  function horarioExists(list, dia, inicio, fin) {
+    return list.some(h => h.dia === dia && h.inicio === inicio && h.fin === fin);
+  }
+  
+  function horarioOverlaps(list, dia, inicioNuevo, finNuevo) {
+    return list.some(h => {
+      if (h.dia !== dia) return false;
+      return (inicioNuevo < h.fin && finNuevo > h.inicio);
+    });
+  }
+  
+  function renderHorarios(list, containerId) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    
+    container.innerHTML = '';
+    if (list.length === 0) {
+      container.innerHTML = '<p style="color:var(--muted);font-size:13px;padding:8px">⚠️ No hay horarios agregados. Agregá al menos uno.</p>';
+      return;
+    }
+    
+    const diasOrden = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'];
+    const sortedList = [...list].sort((a, b) => {
+      const diaCompare = diasOrden.indexOf(a.dia) - diasOrden.indexOf(b.dia);
+      if (diaCompare !== 0) return diaCompare;
+      return a.inicio.localeCompare(b.inicio);
+    });
+    
+    sortedList.forEach((h) => {
+      const realIdx = list.indexOf(h);
+      const div = document.createElement('div');
+      div.className = 'horario-item';
+      
+      const horaInicio = formatHour12(h.inicio.substring(0,5));
+      const horaFin = formatHour12(h.fin.substring(0,5));
+      
+      div.innerHTML = `
+        <div class="horario-info">
+          <strong style="text-transform:capitalize;color:var(--primary);font-size:14px">${h.dia}</strong>
+          <br>
+          <span style="color:var(--text);font-size:13px">🕒 ${horaInicio} - ${horaFin}</span>
+        </div>
+        <button type="button" class="btn-remove-horario" data-idx="${realIdx}">🗑️ Eliminar</button>
+      `;
+      container.appendChild(div);
+    });
+    
+    container.querySelectorAll('.btn-remove-horario').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const idx = parseInt(btn.dataset.idx);
+        if (containerId === 'horariosListCreate') {
+          horariosCreate.splice(idx, 1);
+          renderHorarios(horariosCreate, 'horariosListCreate');
+          const msgEl = document.getElementById('msgCreateMed');
+          if (msgEl) {
+            msgEl.textContent = '✅ Horario eliminado';
+            msgEl.className = 'msg ok';
+          }
+        } else {
+          horariosEdit.splice(idx, 1);
+          renderHorarios(horariosEdit, 'horariosListEdit');
+          const msgEl = document.getElementById('msgMedicoModal');
+          if (msgEl) {
+            msgEl.textContent = '✅ Horario eliminado';
+            msgEl.className = 'msg ok';
+          }
+        }
+      });
+    });
+  }
+  
+  document.getElementById('btnAgregarHorario')?.addEventListener('click', () => {
+    const dia = document.getElementById('diaHorario').value;
+    const inicio = document.getElementById('horaInicio').value;
+    const fin = document.getElementById('horaFin').value;
+    const msgEl = document.getElementById('msgCreateMed');
+    
+    if (!inicio || !fin) {
+      alert('⚠️ Completá las horas de inicio y fin');
+      return;
+    }
+    
+    if (inicio >= fin) {
+      alert('⚠️ La hora de inicio debe ser menor que la de fin');
+      return;
+    }
+    
+    const inicioFull = inicio + ':00';
+    const finFull = fin + ':00';
+    
+    if (horarioExists(horariosCreate, dia, inicioFull, finFull)) {
+      alert('⚠️ Este horario ya fue agregado');
+      return;
+    }
+    
+    if (horarioOverlaps(horariosCreate, dia, inicioFull, finFull)) {
+      alert('⚠️ Este horario se solapa con uno existente');
+      return;
+    }
+    
+    horariosCreate.push({dia, inicio: inicioFull, fin: finFull});
+    renderHorarios(horariosCreate, 'horariosListCreate');
+    
+    if (msgEl) {
+      msgEl.textContent = `✅ Horario agregado`;
+      msgEl.className = 'msg ok';
+    }
+  });
+  
+  document.getElementById('btnAgregarHorarioEdit')?.addEventListener('click', () => {
+    const dia = document.getElementById('editDiaHorario').value;
+    const inicio = document.getElementById('editHoraInicio').value;
+    const fin = document.getElementById('editHoraFin').value;
+    const msgEl = document.getElementById('msgMedicoModal');
+    
+    if (!inicio || !fin) {
+      alert('⚠️ Completá las horas de inicio y fin');
+      return;
+    }
+    
+    if (inicio >= fin) {
+      alert('⚠️ La hora de inicio debe ser menor que la de fin');
+      return;
+    }
+    
+    const inicioFull = inicio + ':00';
+    const finFull = fin + ':00';
+    
+    if (horarioExists(horariosEdit, dia, inicioFull, finFull)) {
+      alert('⚠️ Este horario ya fue agregado');
+      return;
+    }
+    
+    if (horarioOverlaps(horariosEdit, dia, inicioFull, finFull)) {
+      alert('⚠️ Este horario se solapa con uno existente');
+      return;
+    }
+    
+    horariosEdit.push({dia, inicio: inicioFull, fin: finFull});
+    renderHorarios(horariosEdit, 'horariosListEdit');
+    
+    if (msgEl) {
+      msgEl.textContent = `✅ Horario agregado`;
+      msgEl.className = 'msg ok';
+    }
+  });
+  
+  document.getElementById('btnCrearMedico')?.addEventListener('click', async () => {
+    const form = document.getElementById('createMedicoForm');
+    const msgEl = document.getElementById('msgCreateMed');
+    
+    if (!form.checkValidity()) {
+      form.reportValidity();
+      return;
+    }
+    
+    if (horariosCreate.length === 0) {
+      msgEl.textContent = '⚠️ Debe agregar al menos un horario';
+      msgEl.className = 'msg err';
+      alert('⚠️ Debe agregar al menos un horario de atención');
+      return;
+    }
+    
+    msgEl.textContent = '⏳ Creando médico...';
+    msgEl.className = 'msg';
+    
+    const fd = new FormData(form);
+    fd.set('action', 'create_medico');
+    fd.set('csrf_token', document.querySelector('meta[name="csrf-token"]').content);
+    fd.set('horarios', JSON.stringify(horariosCreate));
+    
+    try {
+      const res = await fetch('admin.php', {method:'POST', body:fd});
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || 'Error');
+      
+      msgEl.textContent = '✅ ' + (data.msg || 'Médico creado');
+      msgEl.className = 'msg ok';
+      
+      form.reset();
+      horariosCreate.length = 0;
+      renderHorarios(horariosCreate, 'horariosListCreate');
+      
+      setTimeout(() => window.location.reload(), 1500);
+    } catch(e) {
+      msgEl.textContent = '❌ ' + e.message;
+      msgEl.className = 'msg err';
+    }
+  });
+  
+  window.loadMedicoHorarios = function(horarios) {
+    horariosEdit.length = 0;
+    if (horarios && Array.isArray(horarios)) {
+      horarios.forEach(h => {
+        horariosEdit.push({
+          dia: h.Dia_semana || h.dia_semana,
+          inicio: h.Hora_inicio || h.hora_inicio,
+          fin: h.Hora_fin || h.hora_fin
+        });
+      });
+    }
+    renderHorarios(horariosEdit, 'horariosListEdit');
+  };
+  
+  document.getElementById('formEditMedico')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const msgEl = document.getElementById('msgMedicoModal');
+    
+    if (horariosEdit.length === 0) {
+      msgEl.textContent = '⚠️ Debe tener al menos un horario';
+      msgEl.className = 'msg err';
+      alert('⚠️ Debe tener al menos un horario de atención');
+      return;
+    }
+    
+    msgEl.textContent = '⏳ Actualizando...';
+    msgEl.className = 'msg';
+    
+    const fd = new FormData();
+    fd.append('action', 'update_medico');
+    fd.append('csrf_token', document.querySelector('meta[name="csrf-token"]').content);
+    fd.append('id_medico', document.getElementById('editMedId').value);
+    fd.append('nombre', document.getElementById('editMedNombre').value);
+    fd.append('apellido', document.getElementById('editMedApellido').value);
+    fd.append('email', document.getElementById('editMedEmail').value);
+    fd.append('legajo', document.getElementById('editMedLegajo').value);
+    fd.append('especialidad', document.getElementById('editMedEsp').value);
+    fd.append('horarios', JSON.stringify(horariosEdit));
+    
+    try {
+      const res = await fetch('admin.php', {method:'POST', body:fd});
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || 'Error');
+      
+      msgEl.textContent = '✅ ' + (data.msg || 'Actualizado');
+      msgEl.className = 'msg ok';
+      
+      setTimeout(() => window.location.reload(), 1500);
+    } catch(e) {
+      msgEl.textContent = '❌ ' + e.message;
+      msgEl.className = 'msg err';
+    }
+  });
+  
+  // Inicializar vistas
+  renderHorarios(horariosCreate, 'horariosListCreate');
+  renderHorarios(horariosEdit, 'horariosListEdit');
+  
+  console.log('✅ Sistema de horarios inicializado');
+})();
+
+console.log('✅ Admin panel cargado completamente');
+</script>
 </body>
 </html>
+```
+
+---
+
+## Resumen de los cambios principales:
+
+### ✅ **Problemas identificados y solucionados:**
+
+1. **Carga múltiple**: Agregué flag `isLoading` para prevenir cargas simultáneas
+2. **Timeout en peticiones**: Agregué `AbortSignal.timeout(10000)` para evitar esperas infinitas
+3. **Espera del DOM**: La inicialización ahora espera a que el DOM esté completamente listo
+4. **Logs detallados**: Más console.logs para debugging
+5. **Manejo de errores mejorado**: Try-catch en todas las funciones asíncronas
+6. **Orden de scripts**: El `admin.js` se carga al final, después de todas las dependencias
+
+### 🔧 **Para probar:**
+
+1. Abre las herramientas de desarrollador (F12)
+2. Ve a la consola
+3. Deberías ver:
+```
+   🚀 Inicializando panel admin
+   📄 DOM listo, iniciando carga...
+   🔄 Iniciando carga de datos...
+   ✅ Datos cargados: {especialidades: X, medicos: Y, ...}
+   ✅ Inicialización completa
+   ✅ Sistema de horarios inicializado
+   ✅ Admin panel cargado completamente
+   ✅ Panel listo
