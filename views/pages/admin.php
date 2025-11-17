@@ -1600,7 +1600,7 @@ console.log('✅ Admin panel inicializado correctamente');
 </script>
 <script src="../assets/js/turnos_utils.js"></script>
 <script src="../assets/js/admin_validation.js"></script>
-<script src="../assets/js/admin_fixes.js"></script>
+<script src="../assets/js/admin_fixes.js"></script> 
 <script src="../assets/js/admin_turno_confirmation.js"></script>
 <script src="../assets/js/admin.js"></script>
 <script>

@@ -1,6 +1,5 @@
 // admin_fixes.js - Correcciones para admin.php
-// 1. Arregla eliminación de médicos y secretarias
-// 2. Mejora visual de selectores de hora
+// ✅ VERSIÓN CORREGIDA - Sin bucles infinitos
 
 (function() {
   'use strict';
@@ -9,16 +8,16 @@
   const $$ = s => document.querySelectorAll(s);
   const csrf = $('meta[name="csrf-token"]')?.getAttribute('content') || '';
 
+  console.log('🔧 Cargando admin_fixes.js');
+
   // ========== MEJORAR SELECTORES DE HORA ==========
   
   function enhanceTimeInputs() {
     console.log('🎨 Mejorando selectores de hora...');
     
-    // Seleccionar todos los inputs de tipo time
     const timeInputs = $$('input[type="time"]');
     
     timeInputs.forEach(input => {
-      // Agregar estilos personalizados
       input.style.cssText = `
         appearance: none;
         -webkit-appearance: none;
@@ -33,11 +32,9 @@
         cursor: pointer;
         transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         width: 100%;
-        position: relative;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       `;
       
-      // Efectos hover y focus
       input.addEventListener('mouseenter', function() {
         this.style.borderColor = '#22d3ee';
         this.style.boxShadow = '0 0 0 3px rgba(34, 211, 238, 0.1)';
@@ -65,24 +62,20 @@
         this.style.transform = 'translateY(0)';
       });
       
-      // Actualizar label con formato 12h cuando cambia
       input.addEventListener('change', function() {
         updateLabelWithTime(this);
       });
       
-      // Animación al seleccionar
       input.addEventListener('input', function() {
         this.style.color = '#22d3ee';
         this.style.fontWeight = '700';
       });
       
-      // Inicializar con valor si existe
       if (input.value) {
         updateLabelWithTime(input);
       }
     });
     
-    // Agregar estilos globales para el selector de hora
     addTimePickerStyles();
     
     console.log('✅ Selectores de hora mejorados');
@@ -99,10 +92,8 @@
     h = h % 12 || 12;
     const time12 = `${h}:${minutes} ${ampm}`;
     
-    // Obtener texto original del label sin el tiempo
     const originalText = label.textContent.split('(')[0].trim();
     
-    // Actualizar label con formato visual
     label.innerHTML = `
       ${originalText} 
       <span style="color: #22d3ee; font-weight: 700; margin-left: 8px;">
@@ -112,12 +103,11 @@
   }
   
   function addTimePickerStyles() {
-    if ($('#custom-time-styles')) return; // Ya existe
+    if ($('#custom-time-styles')) return;
     
     const style = document.createElement('style');
     style.id = 'custom-time-styles';
     style.textContent = `
-      /* Mejorar el dropdown del time picker en Chrome/Edge */
       input[type="time"]::-webkit-calendar-picker-indicator {
         background: linear-gradient(135deg, #22d3ee 0%, #0891b2 100%);
         border-radius: 8px;
@@ -138,7 +128,6 @@
         transform: scale(0.95);
       }
       
-      /* Mejorar el dropdown en Firefox */
       input[type="time"]::-moz-calendar-picker-indicator {
         background: linear-gradient(135deg, #22d3ee 0%, #0891b2 100%);
         border-radius: 8px;
@@ -146,7 +135,6 @@
         cursor: pointer;
       }
       
-      /* Estilos para el texto del input */
       input[type="time"]::-webkit-datetime-edit {
         padding: 0;
         color: inherit;
@@ -180,7 +168,6 @@
         padding: 0 4px;
       }
       
-      /* Animación de entrada */
       @keyframes timePickerFadeIn {
         from {
           opacity: 0;
@@ -234,7 +221,6 @@
       console.log('✅ Médico eliminado:', data.msg);
       alert('✅ ' + (data.msg || 'Médico eliminado correctamente'));
       
-      // Recargar página para actualizar la lista
       window.location.reload();
       
     } catch (e) {
@@ -275,7 +261,6 @@
       console.log('✅ Secretaria eliminada:', data.msg);
       alert('✅ ' + (data.msg || 'Secretaria eliminada correctamente'));
       
-      // Recargar página para actualizar la lista
       window.location.reload();
       
     } catch (e) {
@@ -297,28 +282,48 @@
     // Mejorar selectores de hora
     enhanceTimeInputs();
     
-    // Observar cambios en el DOM para nuevos inputs de tiempo
+    // ✅ CRÍTICO: Observar cambios en el DOM SOLO PARA TIME INPUTS
+    // NO observar otros cambios que puedan causar bucles
     const observer = new MutationObserver((mutations) => {
       mutations.forEach((mutation) => {
         if (mutation.addedNodes.length) {
-          enhanceTimeInputs();
+          // Solo mejorar inputs de tiempo nuevos
+          mutation.addedNodes.forEach(node => {
+            if (node.nodeType === 1) { // Element node
+              if (node.matches && node.matches('input[type="time"]')) {
+                enhanceTimeInputs();
+              } else if (node.querySelectorAll) {
+                const timeInputs = node.querySelectorAll('input[type="time"]');
+                if (timeInputs.length > 0) {
+                  enhanceTimeInputs();
+                }
+              }
+            }
+          });
         }
       });
     });
     
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true
+    // ✅ Observar SOLO cambios en modales (donde se agregan inputs dinámicamente)
+    const modals = document.querySelectorAll('.modal, .modal-content');
+    modals.forEach(modal => {
+      observer.observe(modal, {
+        childList: true,
+        subtree: true
+      });
     });
     
-    console.log('✅ Correcciones aplicadas');
+    console.log('✅ Correcciones aplicadas (sin bucles)');
   }
   
-  // Inicializar cuando el DOM esté listo
+  // ✅ IMPORTANTE: Inicializar SOLO UNA VEZ
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
   } else {
+    // Si el DOM ya está listo, ejecutar inmediatamente
     init();
   }
+  
+  console.log('✅ admin_fixes.js cargado correctamente');
   
 })();
