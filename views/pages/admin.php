@@ -822,8 +822,6 @@ if ($action === 'delete_medico') {
 
   json_out(['ok'=>false,'error'=>'Acción no soportada: ' . $action],400);
 }
-// ========== AGREGAR ESTAS ACCIONES EN admin.php DESPUÉS DE reschedule_turno ==========
-
 // ========== CONFIRMAR TURNO ==========
 if ($action === 'confirmar_turno') {
     ensure_csrf();
@@ -833,18 +831,17 @@ if ($action === 'confirmar_turno') {
         $turnoId = (int)($_POST['turno_id'] ?? 0);
         if ($turnoId <= 0) throw new Exception('Turno inválido');
         
-        // Obtener nombre del staff
+        // Obtener nombre del staff (ya tenemos $uid de must_staff)
         $stmt = $pdo->prepare("SELECT nombre, apellido FROM usuario WHERE Id_usuario = ?");
         $stmt->execute([$uid]);
         $staff = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$staff) throw new Exception('Usuario no encontrado');
+        
         $staffNombre = trim(($staff['apellido'] ?? '') . ', ' . ($staff['nombre'] ?? ''));
         
         // Verificar que el turno existe y está pendiente
-        $stmt = $pdo->prepare("
-            SELECT estado 
-            FROM turno 
-            WHERE Id_turno = ?
-        ");
+        $stmt = $pdo->prepare("SELECT estado FROM turno WHERE Id_turno = ?");
         $stmt->execute([$turnoId]);
         $turno = $stmt->fetch(PDO::FETCH_ASSOC);
         
@@ -888,7 +885,7 @@ if ($action === 'confirmar_turno') {
         } else {
             json_out([
                 'ok' => true, 
-                'msg' => 'Turno confirmado pero hubo un error al enviar el email: ' . $resultadoEmail['error']
+                'msg' => 'Turno confirmado pero hubo un error al enviar el email: ' . ($resultadoEmail['error'] ?? 'desconocido')
             ]);
         }
         
@@ -917,6 +914,9 @@ if ($action === 'rechazar_turno') {
         $stmt = $pdo->prepare("SELECT nombre, apellido FROM usuario WHERE Id_usuario = ?");
         $stmt->execute([$uid]);
         $staff = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$staff) throw new Exception('Usuario no encontrado');
+        
         $staffNombre = trim(($staff['apellido'] ?? '') . ', ' . ($staff['nombre'] ?? ''));
         
         // Verificar que el turno existe
@@ -960,7 +960,7 @@ if ($action === 'rechazar_turno') {
         } else {
             json_out([
                 'ok' => true, 
-                'msg' => 'Turno rechazado pero hubo un error al enviar el email: ' . $resultadoEmail['error']
+                'msg' => 'Turno rechazado pero hubo un error al enviar el email: ' . ($resultadoEmail['error'] ?? 'desconocido')
             ]);
         }
         
