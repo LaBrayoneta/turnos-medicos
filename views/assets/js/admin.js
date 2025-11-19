@@ -566,25 +566,22 @@
       }
       
       tr.innerHTML = `
-        <td>
-          <div style="font-weight:600">${esc(r.fecha_fmt||'')}</div>
-        </td>
-        <td>${esc(r.paciente||'')}</td>
-        <td><span class="badge ${badgeClass}">${estadoIcono} ${esc(estadoTexto)}</span></td>
-        <td class="row-actions">
-          ${pendiente ? `
-            <button class="btn primary btn-sm btn-confirmar" data-id="${r.Id_turno}">✅ Confirmar</button>
-            <button class="btn danger btn-sm btn-rechazar" data-id="${r.Id_turno}">❌ Rechazar</button>
-            <button class="btn ghost btn-sm btn-reprog" data-id="${r.Id_turno}" data-med="${r.Id_medico||''}">🔄 Reprogramar</button>
-            <button class="btn ghost btn-sm btn-delete" data-id="${r.Id_turno}">🗑️ Eliminar</button>
-          ` : confirmado ? `
-            <button class="btn ghost btn-sm btn-cancel" data-id="${r.Id_turno}">❌ Cancelar</button>
-            <button class="btn ghost btn-sm btn-reprog" data-id="${r.Id_turno}" data-med="${r.Id_medico||''}">🔄 Reprogramar</button>
-            <button class="btn ghost btn-sm btn-delete" data-id="${r.Id_turno}">🗑️ Eliminar</button>
-          ` : `
-            <button class="btn ghost btn-sm btn-delete" data-id="${r.Id_turno}">🗑️ Eliminar</button>
-          `}
-        </td>`;
+  <td>
+    <div style="font-weight:600">${esc(r.fecha_fmt||'')}</div>
+  </td>
+  <td>${esc(r.paciente||'')}</td>
+  <td><span class="badge ${badgeClass}">${estadoIcono} ${esc(estadoTexto)}</span></td>
+  <td class="row-actions">
+    ${pendiente ? `
+      <button class="btn primary btn-sm btn-confirmar" data-id="${r.Id_turno}">✅ Confirmar</button>
+      <button class="btn danger btn-sm btn-rechazar" data-id="${r.Id_turno}">❌ Rechazar</button>
+    ` : ''}
+    ${confirmado || pendiente ? `
+      <button class="btn ghost btn-sm btn-cancel" data-id="${r.Id_turno}">❌ Cancelar</button>
+      <button class="btn ghost btn-sm btn-reprog" data-id="${r.Id_turno}">🔄 Reprogramar</button>
+    ` : ''}
+    <button class="btn ghost btn-sm btn-delete" data-id="${r.Id_turno}">🗑️ Eliminar</button>
+  </td>`;
       
       if (rechazado) tr.style.opacity = '0.6';
       

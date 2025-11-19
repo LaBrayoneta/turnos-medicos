@@ -344,8 +344,7 @@ if ($action === 'my_appointments') {
   }
 }
 
-// ========== EN controllers/turnos_api.php - REEMPLAZAR LA ACCIÓN 'book' ==========
-
+// ✅ CORREGIDO: Reservar turno
 if ($action === 'book' && $_SERVER['REQUEST_METHOD'] === 'POST') {
   ensure_csrf();
   $uid = require_login();
@@ -355,6 +354,9 @@ if ($action === 'book' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     $time = trim($_POST['time'] ?? '');
     $med = (int)($_POST['medico_id'] ?? 0);
     
+    error_log("🔄 Book request - User: $uid, Med: $med, Date: $date, Time: $time");
+    
+    // Validaciones
     if (!$date || !validate_date($date)) {
       json_out(['ok' => false, 'error' => 'Fecha inválida'], 400);
     }
@@ -374,17 +376,18 @@ if ($action === 'book' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     $pacId = (int)($st->fetchColumn() ?: 0);
     if ($pacId <= 0) json_out(['ok' => false, 'error' => 'Usuario no registrado como paciente'], 400);
 
-    // ✅ NUEVA VALIDACIÓN: Verificar si ya tiene turno activo con este médico
+    // ✅ VERIFICAR TURNO DUPLICADO
     $chkExisting = $pdo->prepare("
       SELECT COUNT(*) FROM turno 
       WHERE Id_paciente = ? 
       AND Id_medico = ? 
-      AND (Estado IS NULL OR Estado = 'reservado')
+      AND (Estado IS NULL OR Estado = 'reservado' OR Estado = 'pendiente_confirmacion')
       AND Fecha >= NOW()
     ");
     $chkExisting->execute([$pacId, $med]);
     
     if ($chkExisting->fetchColumn() > 0) {
+      error_log("❌ Duplicate turno detected - Patient $pacId, Doctor $med");
       json_out([
         'ok' => false, 
         'error' => 'Ya tenés un turno activo con este médico. Cancelá o completá el turno anterior antes de reservar uno nuevo.'
@@ -397,6 +400,8 @@ if ($action === 'book' && $_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $fechaHora = $dt->format('Y-m-d H:i:00');
     
+    error_log("📅 Validating schedule - Date: $fechaHora");
+    
     // Verificar horario del médico
     $diaSemana = get_day_name($date);
     $chkHorario = $pdo->prepare("
@@ -407,6 +412,7 @@ if ($action === 'book' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     ");
     $chkHorario->execute([$med, $diaSemana, $time, $time]);
     if (!$chkHorario->fetch()) {
+      error_log("❌ Schedule not available - Day: $diaSemana, Time: $time");
       json_out(['ok' => false, 'error' => 'Horario no disponible para este médico'], 400);
     }
     
@@ -417,24 +423,30 @@ if ($action === 'book' && $_SERVER['REQUEST_METHOD'] === 'POST') {
       LIMIT 1
     ");
     $chk->execute([$fechaHora, $med]);
-    if ($chk->fetch()) json_out(['ok' => false, 'error' => 'Horario ocupado'], 409);
+    if ($chk->fetch()) {
+      error_log("❌ Slot already taken");
+      json_out(['ok' => false, 'error' => 'Horario ocupado'], 409);
+    }
 
-    // Insertar turno
-   $stmt = $pdo->prepare("
-  INSERT INTO turno (fecha, estado, Id_paciente, Id_medico) 
-  VALUES (?, 'pendiente_confirmacion', ?, ?)
-");
+    // ✅ CORREGIDO: Insertar turno con estado correcto
+    error_log("✅ Inserting turno - Patient: $pacId, Doctor: $med, DateTime: $fechaHora");
+    
+    $ins = $pdo->prepare("
+      INSERT INTO turno (Fecha, Estado, Id_paciente, Id_medico) 
+      VALUES (?, 'pendiente_confirmacion', ?, ?)
+    ");
     $ins->execute([$fechaHora, $pacId, $med]);
 
-    error_log("Turno created: User $uid, Medico $med, Date $fechaHora");
-    json_out(['ok' => true, 'mensaje' => 'Turno reservado exitosamente']);
+    $turnoId = $pdo->lastInsertId();
+    error_log("✅ Turno created: ID $turnoId");
+    
+    json_out(['ok' => true, 'mensaje' => 'Turno reservado exitosamente', 'turno_id' => $turnoId]);
     
   } catch (Throwable $e) {
-    error_log("Error en book: " . $e->getMessage());
-    json_out(['ok' => false, 'error' => 'Error al reservar turno'], 500);
+    error_log("❌ Error en book: " . $e->getMessage() . "\n" . $e->getTraceAsString());
+    json_out(['ok' => false, 'error' => 'Error al reservar turno: ' . $e->getMessage()], 500);
   }
 }
-
 
 // ✅ Cancelar turno
 if ($action === 'cancel' && $_SERVER['REQUEST_METHOD'] === 'POST') {
