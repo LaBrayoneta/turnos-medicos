@@ -1148,6 +1148,7 @@ $rolTexto = $isSec ? 'Secretaría' : 'Médico';
   <meta name="csrf-token" content="<?= htmlspecialchars($csrf) ?>">
   <link rel="stylesheet" href="../assets/css/admin.css">
   <link rel="stylesheet" href="../assets/css/theme_light.css">
+
   <script src="../assets/js/theme_toggle.js"></script>
 </head>
 <body>
