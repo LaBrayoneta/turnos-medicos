@@ -971,7 +971,83 @@ if ($action === 'rechazar_turno') {
 }
   json_out(['ok'=>false,'error'=>'Acción no soportada: ' . $action],400);
 }
+// ========== FETCH: TURNOS PENDIENTES ==========
+if ($action === 'turnos_pendientes') {
+  try {
+    $where = "t.estado = 'pendiente_confirmacion'";
+    $params = [];
+    
+    // Filtros opcionales
+    $espId = (int)($_GET['especialidad_id'] ?? 0);
+    if ($espId > 0) {
+      $where .= " AND m.Id_Especialidad = ?";
+      $params[] = $espId;
+    }
+    
+    $medId = (int)($_GET['medico_id'] ?? 0);
+    if ($medId > 0) {
+      $where .= " AND t.Id_medico = ?";
+      $params[] = $medId;
+    }
+    
+    $from = $_GET['from'] ?? '';
+    if ($from && preg_match('/^\d{4}-\d{2}-\d{2}$/', $from)) {
+      $where .= " AND DATE(t.fecha) >= ?";
+      $params[] = $from;
+    }
+    
+    $to = $_GET['to'] ?? '';
+    if ($to && preg_match('/^\d{4}-\d{2}-\d{2}$/', $to)) {
+      $where .= " AND DATE(t.fecha) <= ?";
+      $params[] = $to;
+    }
 
+    $stmt = $pdo->prepare("
+      SELECT 
+        t.Id_turno,
+        t.fecha,
+        t.Id_medico,
+        DATE_FORMAT(t.fecha, '%d/%m/%Y %H:%i') as fecha_fmt,
+        CONCAT(up.apellido, ', ', up.nombre) AS paciente,
+        up.dni AS paciente_dni,
+        up.email AS paciente_email,
+        CONCAT(um.apellido, ', ', um.nombre) AS medico,
+        e.nombre AS especialidad,
+        os.nombre AS obra_social
+      FROM turno t
+      JOIN paciente p ON p.Id_paciente = t.Id_paciente
+      JOIN usuario up ON up.Id_usuario = p.Id_usuario
+      JOIN medico m ON m.Id_medico = t.Id_medico
+      JOIN usuario um ON um.Id_usuario = m.Id_usuario
+      LEFT JOIN especialidad e ON e.Id_Especialidad = m.Id_Especialidad
+      LEFT JOIN obra_social os ON os.Id_obra_social = p.Id_obra_social
+      WHERE $where
+      ORDER BY t.fecha ASC
+    ");
+    $stmt->execute($params);
+
+    $items = [];
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+      $items[] = [
+        'Id_turno' => (int)$r['Id_turno'],
+        'Id_medico' => (int)$r['Id_medico'],
+        'fecha' => $r['fecha'],
+        'fecha_fmt' => $r['fecha_fmt'],
+        'paciente' => $r['paciente'],
+        'paciente_dni' => $r['paciente_dni'],
+        'paciente_email' => $r['paciente_email'],
+        'medico' => $r['medico'],
+        'especialidad' => $r['especialidad'],
+        'obra_social' => $r['obra_social'] ?? 'Sin obra social'
+      ];
+    }
+
+    json_out(['ok'=>true,'items'=>$items]);
+  } catch (Throwable $e) {
+    error_log('Error en turnos_pendientes: ' . $e->getMessage());
+    json_out(['ok'=>false,'error'=>$e->getMessage()], 500);
+  }
+}
 // ======= VALIDACIÓN DE ACCESO PARA HTML =======
 [$uid,$isSec,$isMed,$myMedId,$mySecId] = must_staff($pdo);
 
@@ -1013,11 +1089,12 @@ $rolTexto = $isSec ? 'Secretaría' : 'Médico';
 
 <main class="wrap">
   <div class="tabs">
-    <button class="tab active" data-tab="medicos">👨‍⚕️ Médicos</button>
-    <button class="tab" data-tab="secretarias">👩‍💼 Secretarias</button>
-    <button class="tab" data-tab="obras">🏥 Obras Sociales</button>
-    <button class="tab" data-tab="turnos">📅 Gestión de Turnos</button>
-  </div>
+  <button class="tab active" data-tab="medicos">👨‍⚕️ Médicos</button>
+  <button class="tab" data-tab="secretarias">👩‍💼 Secretarias</button>
+  <button class="tab" data-tab="obras">🏥 Obras Sociales</button>
+  <button class="tab" data-tab="turnos-pendientes">⏳ Turnos Reservados</button>
+  <button class="tab" data-tab="turnos">📅 Gestión de Turnos</button>
+</div>
 
   <!-- ===== MÉDICOS ===== -->
   <section id="tab-medicos" class="card">
@@ -1130,6 +1207,69 @@ $rolTexto = $isSec ? 'Secretaría' : 'Médico';
     </div>
   </section>
 
+  <section id="tab-turnos-pendientes" class="card hidden">
+  <h2>⏳ Turnos Reservados - Pendientes de Confirmación</h2>
+  
+  <p style="color:var(--muted);margin-bottom:20px;padding:12px;background:rgba(251,146,60,0.1);border-left:3px solid var(--warn);border-radius:8px">
+    ℹ️ <strong>Estos turnos fueron solicitados por pacientes y esperan confirmación o rechazo por parte del staff.</strong>
+    <br>Una vez confirmados, se enviará un email automático al paciente con los detalles.
+  </p>
+  
+  <!-- Filtros -->
+  <div class="grid" style="display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin-bottom:16px">
+    <div class="field">
+      <label for="fEspPendientes">Filtrar por Especialidad</label>
+      <select id="fEspPendientes">
+        <option value="">Todas las especialidades</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="fMedPendientes">Filtrar por Médico</label>
+      <select id="fMedPendientes" disabled>
+        <option value="">Elegí especialidad primero</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="grid" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:12px">
+    <div class="field">
+      <label for="fFromPendientes">Desde</label>
+      <input id="fFromPendientes" type="date">
+    </div>
+    <div class="field">
+      <label for="fToPendientes">Hasta</label>
+      <input id="fToPendientes" type="date">
+    </div>
+  </div>
+
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+    <button id="btnRefreshPendientes" class="btn ghost">🔄 Actualizar</button>
+    <button id="btnClearFiltersPendientes" class="btn ghost">❌ Limpiar filtros</button>
+    <span id="msgPendientes" class="msg"></span>
+  </div>
+
+  <!-- Tabla de Turnos Pendientes -->
+  <div class="table-wrap">
+    <table id="tblTurnosPendientes">
+      <thead>
+        <tr>
+          <th>Fecha y Hora</th>
+          <th>Paciente</th>
+          <th>DNI</th>
+          <th>Médico</th>
+          <th>Especialidad</th>
+          <th>Obra Social</th>
+          <th style="width:200px">Acciones</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <div id="noPendientes" class="msg" style="padding:40px;text-align:center;display:none">
+      ✅ No hay turnos pendientes de confirmación
+    </div>
+  </div>
+</section>
+
   <!-- ===== TURNOS ===== -->
   <section id="tab-turnos" class="card hidden">
     <h2>📅 Gestión de Turnos</h2>
@@ -1168,8 +1308,6 @@ $rolTexto = $isSec ? 'Secretaría' : 'Médico';
         <div class="field"><label for="newDate">Nueva fecha</label><input id="newDate" type="date"></div>
         <div class="field"><label for="newTime">Nuevo horario</label><select id="newTime"><option value="">Elegí fecha…</option></select></div>
         <div style="display:flex;align-items:flex-end;gap:8px">
-          <button id="btnReprog" class="btn primary" disabled>✅ Confirmar</button>
-          <button id="btnCancelReprog" class="btn ghost">❌ Cancelar</button>
         </div>
       </div>
     </div>

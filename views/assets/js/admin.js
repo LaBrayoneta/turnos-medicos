@@ -1090,6 +1090,208 @@
   fFrom?.addEventListener('change', loadAgenda);
   fTo?.addEventListener('change', loadAgenda);
 
+  //Sistema de Turnos Pendientes
+(function(){
+  'use strict';
+  
+  const $ = s => document.querySelector(s);
+  const csrf = $('meta[name="csrf-token"]')?.getAttribute('content') || '';
+  
+  function setMsg(el, t, ok=true){
+    if(!el) return;
+    el.textContent=t||'';
+    el.classList.remove('ok','err');
+    el.classList.add(ok?'ok':'err');
+  }
+  
+  async function loadTurnosPendientes() {
+    const msgEl = $('#msgPendientes');
+    const tbody = $('#tblTurnosPendientes tbody');
+    const noData = $('#noPendientes');
+    
+    if(!tbody) return;
+    
+    setMsg(msgEl, '⏳ Cargando turnos pendientes...', true);
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:20px">⏳ Cargando...</td></tr>';
+    if(noData) noData.style.display = 'none';
+    
+    try {
+      const espId = $('#fEspPendientes')?.value || '';
+      const medId = $('#fMedPendientes')?.value || '';
+      const from = $('#fFromPendientes')?.value || '';
+      const to = $('#fToPendientes')?.value || '';
+      
+      let url = 'admin.php?fetch=turnos_pendientes';
+      if(espId) url += `&especialidad_id=${espId}`;
+      if(medId) url += `&medico_id=${medId}`;
+      if(from) url += `&from=${from}`;
+      if(to) url += `&to=${to}`;
+      
+      const res = await fetch(url, { headers: { 'Accept': 'application/json' }});
+      if(!res.ok) throw new Error(`HTTP ${res.status}`);
+      
+      const data = await res.json();
+      if(!data.ok) throw new Error(data.error || 'Error');
+      
+      renderTurnosPendientes(data.items || []);
+      setMsg(msgEl, `✅ ${data.items.length} turno(s) pendiente(s)`, true);
+      
+    } catch(e) {
+      console.error('Error:', e);
+      setMsg(msgEl, '❌ ' + e.message, false);
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--err)">❌ Error al cargar</td></tr>';
+    }
+  }
+  
+  function renderTurnosPendientes(items) {
+    const tbody = $('#tblTurnosPendientes tbody');
+    const noData = $('#noPendientes');
+    
+    if(!tbody) return;
+    
+    tbody.innerHTML = '';
+    
+    if(items.length === 0) {
+      if(noData) noData.style.display = 'block';
+      return;
+    }
+    
+    if(noData) noData.style.display = 'none';
+    
+    items.forEach(t => {
+      const tr = document.createElement('tr');
+      tr.style.background = 'rgba(251,146,60,0.05)';
+      
+      tr.innerHTML = `
+        <td>
+          <div style="font-weight:600;color:var(--primary)">${t.fecha_fmt}</div>
+        </td>
+        <td>${t.paciente}</td>
+        <td>${t.paciente_dni}</td>
+        <td>${t.medico}</td>
+        <td>${t.especialidad}</td>
+        <td>${t.obra_social}</td>
+        <td class="row-actions">
+          <button class="btn primary btn-sm btn-confirmar-turno" data-id="${t.Id_turno}">
+            ✅ Confirmar
+          </button>
+          <button class="btn danger btn-sm btn-rechazar-turno" data-id="${t.Id_turno}">
+            ❌ Rechazar
+          </button>
+        </td>
+      `;
+      
+      tbody.appendChild(tr);
+    });
+    
+    // Event listeners
+    tbody.querySelectorAll('.btn-confirmar-turno').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if(window.confirmarTurno) {
+          window.confirmarTurno(btn.dataset.id);
+        }
+      });
+    });
+    
+    tbody.querySelectorAll('.btn-rechazar-turno').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if(window.rechazarTurno) {
+          window.rechazarTurno(btn.dataset.id);
+        }
+      });
+    });
+  }
+  
+  // Cargar especialidades en el filtro
+  async function loadEspecialidadesPendientes() {
+    const sel = $('#fEspPendientes');
+    if(!sel) return;
+    
+    try {
+      const res = await fetch('admin.php?fetch=init', { headers: { 'Accept': 'application/json' }});
+      const data = await res.json();
+      
+      if(data.ok && data.especialidades) {
+        sel.innerHTML = '<option value="">Todas las especialidades</option>';
+        data.especialidades.forEach(e => {
+          const opt = document.createElement('option');
+          opt.value = e.Id_Especialidad;
+          opt.textContent = e.nombre;
+          sel.appendChild(opt);
+        });
+      }
+    } catch(e) {
+      console.error('Error loading especialidades:', e);
+    }
+  }
+  
+  // Event listeners
+  $('#fEspPendientes')?.addEventListener('change', async function() {
+    const medSel = $('#fMedPendientes');
+    if(!medSel) return;
+    
+    if(!this.value) {
+      medSel.innerHTML = '<option value="">Todas los médicos</option>';
+      medSel.disabled = true;
+      return;
+    }
+    
+    medSel.innerHTML = '<option value="">Cargando…</option>';
+    medSel.disabled = true;
+    
+    try {
+      const res = await fetch(`admin.php?fetch=doctors&especialidad_id=${this.value}`, { 
+        headers: { 'Accept': 'application/json' }
+      });
+      const data = await res.json();
+      
+      if(data.ok) {
+        medSel.innerHTML = '<option value="">Todos los médicos</option>';
+        (data.items || []).forEach(m => {
+          const opt = document.createElement('option');
+          opt.value = m.Id_medico;
+          opt.textContent = `${m.Apellido}, ${m.Nombre}`;
+          medSel.appendChild(opt);
+        });
+        medSel.disabled = false;
+      }
+    } catch(e) {
+      console.error('Error:', e);
+      medSel.innerHTML = '<option value="">Error</option>';
+    }
+  });
+  
+  $('#btnRefreshPendientes')?.addEventListener('click', loadTurnosPendientes);
+  
+  $('#btnClearFiltersPendientes')?.addEventListener('click', () => {
+    const fEsp = $('#fEspPendientes');
+    const fMed = $('#fMedPendientes');
+    const fFrom = $('#fFromPendientes');
+    const fTo = $('#fToPendientes');
+    
+    if(fEsp) fEsp.value = '';
+    if(fMed) {
+      fMed.innerHTML = '<option value="">Elegí especialidad primero</option>';
+      fMed.disabled = true;
+    }
+    if(fFrom) fFrom.value = '';
+    if(fTo) fTo.value = '';
+    
+    loadTurnosPendientes();
+  });
+  
+  // Inicializar cuando se muestra el tab
+  $$('.tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      if(tab.dataset.tab === 'turnos-pendientes') {
+        loadEspecialidadesPendientes();
+        loadTurnosPendientes();
+      }
+    });
+  });
+  
+  console.log('✅ Sistema de Turnos Pendientes inicializado');
+})();
   // ========== INICIALIZACIÓN ==========
   (async function init(){
     console.log('🚀 Inicializando panel admin');
