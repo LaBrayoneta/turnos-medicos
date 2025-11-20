@@ -705,7 +705,9 @@ if ($action === 'delete_medico') {
     json_out(['ok'=>true,'items'=>$items]);
   }
 
-  if ($action === 'create_turno') {
+  //Crear turno = CONFIRMADO automáticamente
+
+if ($action === 'create_turno') {
     ensure_csrf();
     try {
       $medId = (int)($_POST['medico_id'] ?? 0);
@@ -720,39 +722,41 @@ if ($action === 'delete_medico') {
 
       $fechaHora = "$date $time:00";
 
-      // ✅ NUEVA VALIDACIÓN: Verificar si el paciente ya tiene turno activo con este médico
+      // ✅ Verificar turno duplicado
       $chkExisting = $pdo->prepare("
         SELECT COUNT(*) FROM turno 
         WHERE Id_paciente = ? 
         AND Id_medico = ? 
-        AND (estado IS NULL OR estado = 'reservado')
+        AND estado IN ('pendiente_confirmacion', 'confirmado')
         AND fecha >= NOW()
       ");
       $chkExisting->execute([$pacId, $medId]);
       
       if ($chkExisting->fetchColumn() > 0) {
-        throw new Exception('Este paciente ya tiene un turno activo con este médico. Debe cancelar o completar el turno anterior.');
+        throw new Exception('Este paciente ya tiene un turno activo con este médico');
       }
 
+      // Verificar slot disponible
       $check = $pdo->prepare("
         SELECT 1 FROM turno 
-        WHERE fecha=? AND Id_medico=? AND (estado IS NULL OR estado <> 'cancelado')
+        WHERE fecha=? AND Id_medico=? AND estado IN ('pendiente_confirmacion', 'confirmado')
         LIMIT 1
       ");
       $check->execute([$fechaHora, $medId]);
       if ($check->fetch()) throw new Exception('Ese horario ya está ocupado');
 
+      // ✅ CREAR TURNO CONFIRMADO (no pendiente)
       $stmt = $pdo->prepare("
-        INSERT INTO turno (fecha, estado, Id_paciente, Id_medico, Id_secretaria) 
-        VALUES (?, 'reservado', ?, ?, ?)
+        INSERT INTO turno (fecha, estado, Id_paciente, Id_medico, Id_secretaria, fecha_confirmacion, Id_staff_confirma) 
+        VALUES (?, 'confirmado', ?, ?, ?, NOW(), ?)
       ");
-      $stmt->execute([$fechaHora, $pacId, $medId, $mySecId]);
+      $stmt->execute([$fechaHora, $pacId, $medId, $mySecId, $uid]);
 
-      json_out(['ok'=>true,'msg'=>'Turno creado exitosamente']);
+      json_out(['ok'=>true,'msg'=>'Turno creado y confirmado automáticamente']);
     } catch (Throwable $e) {
       json_out(['ok'=>false,'error'=>$e->getMessage()],500);
     }
-  }
+}
 
 
   if ($action === 'cancel_turno') {
@@ -820,81 +824,7 @@ if ($action === 'delete_medico') {
       json_out(['ok'=>false,'error'=>$e->getMessage()],500);
     }
   }
-
-  // ========== CONFIRMAR TURNO ==========
-if ($action === 'confirmar_turno') {
-    ensure_csrf();
-    require_once __DIR__ . '/../../config/email.php';
-    
-    try {
-        $turnoId = (int)($_POST['turno_id'] ?? 0);
-        if ($turnoId <= 0) throw new Exception('Turno inválido');
-        
-        // Obtener nombre del staff (ya tenemos $uid de must_staff)
-        $stmt = $pdo->prepare("SELECT nombre, apellido FROM usuario WHERE Id_usuario = ?");
-        $stmt->execute([$uid]);
-        $staff = $stmt->fetch(PDO::FETCH_ASSOC);
-        
-        if (!$staff) throw new Exception('Usuario no encontrado');
-        
-        $staffNombre = trim(($staff['apellido'] ?? '') . ', ' . ($staff['nombre'] ?? ''));
-        
-        // Verificar que el turno existe y está pendiente
-        $stmt = $pdo->prepare("SELECT estado FROM turno WHERE Id_turno = ?");
-        $stmt->execute([$turnoId]);
-        $turno = $stmt->fetch(PDO::FETCH_ASSOC);
-        
-        if (!$turno) {
-            throw new Exception('Turno no encontrado');
-        }
-        
-        if ($turno['estado'] === 'confirmado') {
-            throw new Exception('Este turno ya está confirmado');
-        }
-        
-        if ($turno['estado'] === 'rechazado') {
-            throw new Exception('Este turno fue rechazado previamente');
-        }
-        
-        // Iniciar transacción
-        $pdo->beginTransaction();
-        
-        // Actualizar turno
-        $idStaff = $isSec ? $mySecId : $uid;
-        $stmt = $pdo->prepare("
-            UPDATE turno 
-            SET estado = 'confirmado',
-                fecha_confirmacion = NOW(),
-                Id_staff_confirma = ?,
-                motivo_rechazo = NULL
-            WHERE Id_turno = ?
-        ");
-        $stmt->execute([$idStaff, $turnoId]);
-        
-        // Enviar email de confirmación
-        $resultadoEmail = notificarTurnoConfirmado($turnoId, $staffNombre, $pdo);
-        
-        $pdo->commit();
-        
-        if ($resultadoEmail['ok']) {
-            json_out([
-                'ok' => true, 
-                'msg' => 'Turno confirmado y email enviado al paciente'
-            ]);
-        } else {
-            json_out([
-                'ok' => true, 
-                'msg' => 'Turno confirmado pero hubo un error al enviar el email: ' . ($resultadoEmail['error'] ?? 'desconocido')
-            ]);
-        }
-        
-    } catch (Throwable $e) {
-        if ($pdo->inTransaction()) $pdo->rollBack();
-        error_log("Error confirmando turno: " . $e->getMessage());
         json_out(['ok' => false, 'error' => $e->getMessage()], 500);
-    }
-}
-
 // ========== RECHAZAR TURNO ==========
 if ($action === 'rechazar_turno') {
     ensure_csrf();
@@ -1047,6 +977,155 @@ if ($action === 'turnos_pendientes') {
     error_log('Error en turnos_pendientes: ' . $e->getMessage());
     json_out(['ok'=>false,'error'=>$e->getMessage()], 500);
   }
+}
+
+// ========== CONFIRMAR TURNO ==========
+if ($action === 'confirmar_turno') {
+    ensure_csrf();
+    require_once __DIR__ . '/../../config/email.php';
+    
+    try {
+        $turnoId = (int)($_POST['turno_id'] ?? 0);
+        if ($turnoId <= 0) throw new Exception('Turno inválido');
+        
+        // Obtener nombre del staff
+        $stmt = $pdo->prepare("SELECT nombre, apellido FROM usuario WHERE Id_usuario = ?");
+        $stmt->execute([$uid]);
+        $staff = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$staff) throw new Exception('Usuario no encontrado');
+        
+        $staffNombre = trim(($staff['apellido'] ?? '') . ', ' . ($staff['nombre'] ?? ''));
+        
+        // Verificar estado del turno
+        $stmt = $pdo->prepare("SELECT estado FROM turno WHERE Id_turno = ?");
+        $stmt->execute([$turnoId]);
+        $turno = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$turno) {
+            throw new Exception('Turno no encontrado');
+        }
+        
+        if ($turno['estado'] === 'confirmado') {
+            throw new Exception('Este turno ya está confirmado');
+        }
+        
+        if ($turno['estado'] === 'rechazado') {
+            throw new Exception('Este turno fue rechazado previamente');
+        }
+        
+        // Iniciar transacción
+        $pdo->beginTransaction();
+        
+        // Actualizar turno a CONFIRMADO
+        $idStaff = $isSec ? $mySecId : $uid;
+        $stmt = $pdo->prepare("
+            UPDATE turno 
+            SET estado = 'confirmado',
+                fecha_confirmacion = NOW(),
+                Id_staff_confirma = ?,
+                motivo_rechazo = NULL
+            WHERE Id_turno = ?
+        ");
+        $stmt->execute([$idStaff, $turnoId]);
+        
+        // Enviar email de confirmación
+        $resultadoEmail = notificarTurnoConfirmado($turnoId, $staffNombre, $pdo);
+        
+        $pdo->commit();
+        
+        if ($resultadoEmail['ok']) {
+            json_out([
+                'ok' => true, 
+                'msg' => 'Turno confirmado y email enviado al paciente'
+            ]);
+        } else {
+            json_out([
+                'ok' => true, 
+                'msg' => 'Turno confirmado pero hubo un error al enviar el email: ' . ($resultadoEmail['error'] ?? 'desconocido')
+            ]);
+        }
+        
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        error_log("Error confirmando turno: " . $e->getMessage());
+        json_out(['ok' => false, 'error' => $e->getMessage()], 500);
+    }
+}
+
+// ========== RECHAZAR TURNO ==========
+if ($action === 'rechazar_turno') {
+    ensure_csrf();
+    require_once __DIR__ . '/../../config/email.php';
+    
+    try {
+        $turnoId = (int)($_POST['turno_id'] ?? 0);
+        $motivo = trim($_POST['motivo'] ?? '');
+        
+        if ($turnoId <= 0) throw new Exception('Turno inválido');
+        if (empty($motivo)) throw new Exception('Debe especificar el motivo del rechazo');
+        if (strlen($motivo) < 10) throw new Exception('El motivo debe tener al menos 10 caracteres');
+        if (strlen($motivo) > 500) throw new Exception('El motivo es demasiado largo (máximo 500 caracteres)');
+        
+        // Obtener nombre del staff
+        $stmt = $pdo->prepare("SELECT nombre, apellido FROM usuario WHERE Id_usuario = ?");
+        $stmt->execute([$uid]);
+        $staff = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$staff) throw new Exception('Usuario no encontrado');
+        
+        $staffNombre = trim(($staff['apellido'] ?? '') . ', ' . ($staff['nombre'] ?? ''));
+        
+        // Verificar estado del turno
+        $stmt = $pdo->prepare("SELECT estado FROM turno WHERE Id_turno = ?");
+        $stmt->execute([$turnoId]);
+        $turno = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$turno) {
+            throw new Exception('Turno no encontrado');
+        }
+        
+        if ($turno['estado'] === 'rechazado') {
+            throw new Exception('Este turno ya fue rechazado');
+        }
+        
+        // Iniciar transacción
+        $pdo->beginTransaction();
+        
+        // Actualizar turno a RECHAZADO
+        $idStaff = $isSec ? $mySecId : $uid;
+        $stmt = $pdo->prepare("
+            UPDATE turno 
+            SET estado = 'rechazado',
+                fecha_confirmacion = NOW(),
+                Id_staff_confirma = ?,
+                motivo_rechazo = ?
+            WHERE Id_turno = ?
+        ");
+        $stmt->execute([$idStaff, $motivo, $turnoId]);
+        
+        // Enviar email de rechazo
+        $resultadoEmail = notificarTurnoRechazado($turnoId, $motivo, $staffNombre, $pdo);
+        
+        $pdo->commit();
+        
+        if ($resultadoEmail['ok']) {
+            json_out([
+                'ok' => true, 
+                'msg' => 'Turno rechazado y email enviado al paciente'
+            ]);
+        } else {
+            json_out([
+                'ok' => true, 
+                'msg' => 'Turno rechazado pero hubo un error al enviar el email: ' . ($resultadoEmail['error'] ?? 'desconocido')
+            ]);
+        }
+        
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        error_log("Error rechazando turno: " . $e->getMessage());
+        json_out(['ok' => false, 'error' => $e->getMessage()], 500);
+    }
 }
 // ======= VALIDACIÓN DE ACCESO PARA HTML =======
 [$uid,$isSec,$isMed,$myMedId,$mySecId] = must_staff($pdo);

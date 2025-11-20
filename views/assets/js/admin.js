@@ -541,9 +541,9 @@
     if(noData) noData.style.display = 'none';
     
     rows.forEach(r=>{
-      const pendiente = (r.estado === 'pendiente_confirmacion');
       const confirmado = (r.estado === 'confirmado');
       const rechazado = (r.estado === 'rechazado');
+      const cancelado = (r.estado === 'cancelado');
       
       const tr = document.createElement('tr');
       
@@ -559,12 +559,14 @@
         badgeClass = 'err';
         estadoTexto = 'rechazado';
         estadoIcono = '❌';
-      } else if (pendiente) {
-        badgeClass = 'warn';
-        estadoTexto = 'pendiente confirmación';
-        estadoIcono = '⏳';
+      } else if (cancelado) {
+        badgeClass = 'err';
+        estadoTexto = 'cancelado';
+        estadoIcono = '🚫';
       }
       
+      // ✅ SIN BOTONES DE CONFIRMAR/RECHAZAR
+      // Solo: Cancelar, Reprogramar, Eliminar
       tr.innerHTML = `
   <td>
     <div style="font-weight:600">${esc(r.fecha_fmt||'')}</div>
@@ -572,22 +574,19 @@
   <td>${esc(r.paciente||'')}</td>
   <td><span class="badge ${badgeClass}">${estadoIcono} ${esc(estadoTexto)}</span></td>
   <td class="row-actions">
-    ${pendiente ? `
-      <button class="btn primary btn-sm btn-confirmar" data-id="${r.Id_turno}">✅ Confirmar</button>
-      <button class="btn danger btn-sm btn-rechazar" data-id="${r.Id_turno}">❌ Rechazar</button>
-    ` : ''}
-    ${confirmado || pendiente ? `
+    ${confirmado ? `
       <button class="btn ghost btn-sm btn-cancel" data-id="${r.Id_turno}">❌ Cancelar</button>
       <button class="btn ghost btn-sm btn-reprog" data-id="${r.Id_turno}">🔄 Reprogramar</button>
     ` : ''}
     <button class="btn ghost btn-sm btn-delete" data-id="${r.Id_turno}">🗑️ Eliminar</button>
   </td>`;
       
-      if (rechazado) tr.style.opacity = '0.6';
+      if (rechazado || cancelado) tr.style.opacity = '0.6';
       
       tblAgendaBody.appendChild(tr);
     });
 
+    // Event listeners (SIN confirmar/rechazar)
     $$('.btn-cancel').forEach(b=>b.addEventListener('click', ()=> cancelTurno(b.dataset.id)));
     $$('.btn-delete').forEach(b=>b.addEventListener('click', ()=> deleteTurno(b.dataset.id)));
     $$('.btn-reprog').forEach(b=>{
@@ -607,28 +606,6 @@
         }
         setMsg(msgTurns, '🔄 Seleccioná nueva fecha y horario');
         reprogSection?.scrollIntoView({behavior:'smooth', block:'center'});
-      });
-    });
-    
-    $$('.btn-confirmar').forEach(b => {
-      b.addEventListener('click', () => {
-        if (window.confirmarTurno) {
-          window.confirmarTurno(b.dataset.id);
-        } else {
-          console.error('❌ Función confirmarTurno no encontrada');
-          alert('Error: Sistema de confirmación no disponible');
-        }
-      });
-    });
-    
-    $$('.btn-rechazar').forEach(b => {
-      b.addEventListener('click', () => {
-        if (window.rechazarTurno) {
-          window.rechazarTurno(b.dataset.id);
-        } else {
-          console.error('❌ Función rechazarTurno no encontrada');
-          alert('Error: Sistema de rechazo no disponible');
-        }
       });
     });
   }
@@ -1090,7 +1067,7 @@
   fFrom?.addEventListener('change', loadAgenda);
   fTo?.addEventListener('change', loadAgenda);
 
-  //Sistema de Turnos Pendientes
+// ========== SISTEMA DE TURNOS PENDIENTES ==========
 (function(){
   'use strict';
   
@@ -1231,7 +1208,7 @@
     if(!medSel) return;
     
     if(!this.value) {
-      medSel.innerHTML = '<option value="">Todas los médicos</option>';
+      medSel.innerHTML = '<option value="">Todos los médicos</option>';
       medSel.disabled = true;
       return;
     }
@@ -1261,6 +1238,9 @@
     }
   });
   
+  $('#fMedPendientes')?.addEventListener('change', loadTurnosPendientes);
+  $('#fFromPendientes')?.addEventListener('change', loadTurnosPendientes);
+  $('#fToPendientes')?.addEventListener('change', loadTurnosPendientes);
   $('#btnRefreshPendientes')?.addEventListener('click', loadTurnosPendientes);
   
   $('#btnClearFiltersPendientes')?.addEventListener('click', () => {
@@ -1281,7 +1261,7 @@
   });
   
   // Inicializar cuando se muestra el tab
-  $$('.tab').forEach(tab => {
+  document.querySelectorAll('.tab').forEach(tab => {
     tab.addEventListener('click', () => {
       if(tab.dataset.tab === 'turnos-pendientes') {
         loadEspecialidadesPendientes();

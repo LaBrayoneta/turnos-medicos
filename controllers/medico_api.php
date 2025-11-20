@@ -177,11 +177,9 @@ if ($action === 'turnos_proximos') {
         $fecha = $_GET['fecha'] ?? null;
         
         if ($fecha && preg_match('/^\d{4}-\d{2}-\d{2}$/', $fecha)) {
-            // ✅ Fecha específica - 1 parámetro adicional
             $whereClause = "DATE(t.fecha) = ?";
             $params = [$medicoId, $fecha];
         } else {
-            // ✅ Próximos 7 días - 2 parámetros adicionales
             $hoy = date('Y-m-d');
             $fin = date('Y-m-d', strtotime('+7 days'));
             $whereClause = "DATE(t.fecha) BETWEEN ? AND ?";
