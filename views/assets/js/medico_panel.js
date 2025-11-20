@@ -203,14 +203,16 @@
         }
     }
 
-    // Cargar próximos turnos
+// Cargar próximos turnos
     async function loadTurnosProximos(fecha = null) {
         const container = document.getElementById('turnosProximosContainer');
         container.innerHTML = '<p style="text-align:center;padding:20px;color:var(--muted)">⏳ Cargando...</p>';
 
         try {
             let url = `${API_URL}?action=turnos_proximos`;
-            if (fecha) url += `&fecha=${fecha}`;
+            if (fecha) {
+                url += `&fecha=${encodeURIComponent(fecha)}`;
+            }
 
             const res = await fetch(url);
             const data = await res.json();
