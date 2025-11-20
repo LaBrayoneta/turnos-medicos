@@ -1,10 +1,9 @@
 <?php
 /**
- * login.php - VERSIÓN CORREGIDA
- * ✅ Todas las columnas en minúsculas
+ * login.php - Versión mejorada con soporte de tema
  */
 ini_set('session.cookie_httponly', 1);
-ini_set('session.cookie_secure', 0); // 0 para desarrollo local HTTP
+ini_set('session.cookie_secure', 0);
 ini_set('session.use_only_cookies', 1);
 
 session_start();
@@ -24,8 +23,7 @@ if (!empty($_SESSION['Id_usuario'])) {
     exit;
 }
 
-// ========== FUNCIONES DE SEGURIDAD ==========
-
+// Funciones de seguridad (igual que antes)
 function recordFailedAttempt($pdo, $userId) {
     try {
         $stmt = $pdo->prepare("
@@ -94,8 +92,7 @@ function validateDNI($dni) {
     return null;
 }
 
-// ========== PROCESAR LOGIN ==========
-
+// Procesar login (igual que antes)
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
     
@@ -104,13 +101,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
     error_log("🔐 Login attempt - DNI: $dni from IP: $ip");
     
-    // Validaciones básicas
     if (empty($dni)) {
         $error = 'El DNI es obligatorio';
     } elseif (empty($password)) {
         $error = 'La contraseña es obligatoria';
     } else {
-        // Validar DNI
         $dniError = validateDNI($dni);
         if ($dniError) {
             $error = $dniError;
@@ -120,7 +115,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             sleep(2);
         } else {
             try {
-                // ✅ CORRECCIÓN: Usar columnas en MINÚSCULAS
                 $stmt = $pdo->prepare("
                     SELECT 
                         u.Id_usuario, 
@@ -159,23 +153,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     
                     error_log("👤 Usuario encontrado: ID $userId, Rol: {$user['rol']}");
                     
-                    // Verificar bloqueo
                     if (isAccountLocked($user)) {
                         $remainingMinutes = ceil((strtotime($user['account_locked_until']) - time()) / 60);
                         $error = "Cuenta bloqueada temporalmente. Intenta nuevamente en {$remainingMinutes} minuto(s).";
                         error_log("🔒 Locked account: User $userId from IP $ip");
                         sleep(2);
                     }
-                    // Verificar que exista un hash válido
                     elseif (empty($user['password']) || strlen($user['password']) < 10) {
                         error_log("❌ Invalid password hash for user $userId");
                         $error = 'Error en la cuenta. Contacta al administrador.';
                     }
-                    // Verificar contraseña
                     elseif (password_verify($password, $user['password'])) {
                         error_log("✅ Password verified for user $userId");
                         
-                        // Verificar que el usuario tenga rol activo
                         $hasActiveRole = false;
                         $actualRole = '';
                         
@@ -198,16 +188,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             error_log("❌ Inactive user: User $userId, Rol: {$user['rol']}");
                             sleep(2);
                         } else {
-                            // ✅ LOGIN EXITOSO
                             error_log("🎉 Login successful: User $userId ($actualRole)");
                             
-                            // Resetear intentos fallidos
                             resetFailedAttempts($pdo, $userId);
                             
-                            // Regenerar ID de sesión
                             session_regenerate_id(true);
                             
-                            // Guardar datos en sesión
                             $_SESSION['Id_usuario'] = $userId;
                             $_SESSION['dni'] = $user['dni'];
                             $_SESSION['email'] = $user['email'];
@@ -217,7 +203,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $_SESSION['login_time'] = time();
                             $_SESSION['ip_address'] = $ip;
 
-                            // Actualizar último acceso
                             $updateStmt = $pdo->prepare("
                                 UPDATE usuario 
                                 SET ultimo_acceso = NOW() 
@@ -227,7 +212,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                             error_log("✅ Session created for user $userId");
 
-                            // Redirigir según el rol
                             if ($actualRole === 'medico' || $actualRole === 'secretaria') {
                                 header('Location: admin.php');
                             } else {
@@ -236,7 +220,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             exit;
                         }
                     } else {
-                        // Contraseña incorrecta
                         error_log("❌ Wrong password for user $userId");
                         recordFailedAttempt($pdo, $userId);
                         
@@ -250,7 +233,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         sleep(rand(2, 4));
                     }
                 } else {
-                    // Usuario no encontrado
                     $error = 'DNI o contraseña incorrectos';
                     error_log("❌ DNI not found: $dni from IP $ip");
                     sleep(rand(2, 4));
@@ -271,119 +253,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta charset="utf-8">
     <title>Iniciar sesión - Turnos Médicos</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body {
-            font-family: system-ui, -apple-system, Arial, sans-serif;
-            background: linear-gradient(135deg, #0b1220 0%, #1a2332 100%);
-            color: #e5e7eb;
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
-        }
-        .container { max-width: 420px; width: 100%; }
-        .card {
-            background: #111827;
-            border: 1px solid #1f2937;
-            border-radius: 16px;
-            padding: 32px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
-        }
-        .logo { text-align: center; margin-bottom: 24px; }
-        .logo-icon { font-size: 48px; margin-bottom: 8px; }
-        h1 {
-            color: #22d3ee;
-            margin-bottom: 8px;
-            font-size: 28px;
-            text-align: center;
-        }
-        .subtitle {
-            color: #94a3b8;
-            margin-bottom: 24px;
-            font-size: 14px;
-            text-align: center;
-        }
-        .error {
-            background: rgba(239, 68, 68, 0.1);
-            border: 1px solid #ef4444;
-            border-radius: 10px;
-            padding: 12px;
-            margin-bottom: 20px;
-            color: #ef4444;
-            font-size: 14px;
-            text-align: center;
-            animation: shake 0.5s;
-        }
-        @keyframes shake {
-            0%, 100% { transform: translateX(0); }
-            10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
-            20%, 40%, 60%, 80% { transform: translateX(5px); }
-        }
-        .error:before { content: "⚠️ "; }
-        .field { margin-bottom: 16px; }
-        label {
-            display: block;
-            color: #94a3b8;
-            font-size: 14px;
-            font-weight: 500;
-            margin-bottom: 6px;
-        }
-        input {
-            width: 100%;
-            padding: 12px;
-            background: #0b1220;
-            border: 1px solid #1f2937;
-            border-radius: 10px;
-            color: #e5e7eb;
-            font-size: 15px;
-            transition: all 0.2s;
-        }
-        input:focus {
-            outline: none;
-            border-color: #22d3ee;
-            box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.1);
-        }
-        input::placeholder { color: #6b7280; }
-        .btn {
-            width: 100%;
-            padding: 14px;
-            background: #22d3ee;
-            color: #001219;
-            border: none;
-            border-radius: 12px;
-            font-size: 16px;
-            font-weight: 700;
-            cursor: pointer;
-            transition: all 0.2s;
-            margin-top: 8px;
-        }
-        .btn:hover:not(:disabled) {
-            background: #0891b2;
-            transform: translateY(-1px);
-            box-shadow: 0 4px 12px rgba(34, 211, 238, 0.3);
-        }
-        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
-        .footer {
-            text-align: center;
-            margin-top: 20px;
-            padding-top: 20px;
-            border-top: 1px solid #1f2937;
-        }
-        .footer a {
-            color: #22d3ee;
-            text-decoration: none;
-            font-weight: 500;
-        }
-        .footer a:hover { text-decoration: underline; }
-        @media (max-width: 600px) {
-            .card { padding: 24px; }
-            h1 { font-size: 24px; }
-        }
-    </style>
+    <link rel="stylesheet" href="../assets/css/auth.css">
+    <link rel="stylesheet" href="../assets/css/theme_light.css">
 </head>
 <body>
+    <!-- Botón de cambio de tema -->
+    <button class="theme-toggle" type="button" title="Cambiar tema">🌙</button>
+
     <div class="container">
         <div class="card">
             <div class="logo">
@@ -391,7 +267,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </div>
             
             <h1>Bienvenido</h1>
-            <p class="subtitle">Ingresá tus datos para continuar</p>
+            <p class="subtitle">Ingresa tus datos para continuar</p>
 
             <?php if ($error): ?>
                 <div class="error"><?= htmlspecialchars($error, ENT_QUOTES, 'UTF-8') ?></div>
@@ -405,7 +281,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         id="dni" 
                         name="dni" 
                         value="<?= htmlspecialchars($_POST['dni'] ?? '', ENT_QUOTES, 'UTF-8') ?>"
-                        placeholder="Ingresá tu DNI"
+                        placeholder="Ingresa tu DNI"
                         inputmode="numeric"
                         pattern="[0-9]{7,10}"
                         maxlength="10"
@@ -421,7 +297,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         type="password" 
                         id="password" 
                         name="password" 
-                        placeholder="Ingresá tu contraseña"
+                        placeholder="Ingresa tu contraseña"
                         autocomplete="current-password"
                         required
                     >
@@ -431,62 +307,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </form>
 
             <div class="footer">
-                ¿No tenés cuenta? <a href="register.php">Crear cuenta</a> · 
+                ¿No tienes cuenta? <a href="register.php">Crear cuenta</a> · 
                 <a href="index.php">Volver al inicio</a>
             </div>
         </div>
     </div>
 
-    <script>
-        (function() {
-            'use strict';
-
-            const form = document.getElementById('loginForm');
-            const dniInput = document.getElementById('dni');
-            const passwordInput = document.getElementById('password');
-
-            // Solo números en DNI
-            dniInput?.addEventListener('input', function(e) {
-                this.value = this.value.replace(/[^0-9]/g, '');
-            });
-
-            // Validación del formulario
-            form?.addEventListener('submit', function(e) {
-                const dni = dniInput.value.trim();
-                const password = passwordInput.value;
-
-                if (!dni) {
-                    e.preventDefault();
-                    alert('⚠️ Por favor, ingresá tu DNI');
-                    dniInput.focus();
-                    return false;
-                }
-
-                if (dni.length < 7 || dni.length > 10) {
-                    e.preventDefault();
-                    alert('⚠️ El DNI debe tener entre 7 y 10 dígitos');
-                    dniInput.focus();
-                    return false;
-                }
-
-                if (!password) {
-                    e.preventDefault();
-                    alert('⚠️ Por favor, ingresá tu contraseña');
-                    passwordInput.focus();
-                    return false;
-                }
-                
-                // Deshabilitar botón para evitar doble envío
-                const submitBtn = form.querySelector('button[type="submit"]');
-                if (submitBtn) {
-                    submitBtn.disabled = true;
-                    submitBtn.textContent = 'Iniciando sesión...';
-                }
-            });
-
-            // Log para debug
-            console.log('🔐 Login form initialized');
-        })();
-    </script>
+    <script src="../assets/js/theme_toggle.js"></script>
+    <script src="../assets/js/login.js"></script>
 </body>
 </html>

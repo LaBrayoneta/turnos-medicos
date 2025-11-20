@@ -1,12 +1,6 @@
 <?php
 /**
- * register.php - VERSIÓN MEJORADA CON VALIDACIONES AVANZADAS
- * ✅ Capitalización automática de nombres
- * ✅ Solo letras en nombres y apellidos
- * ✅ Solo números en DNI
- * ✅ Ocultar número de carnet cuando se elige "Sin obra social"
- * ✅ Validación de email con DNS
- * ✅ Fortaleza de contraseña mejorada
+ * register.php - Versión mejorada con soporte de tema y validaciones avanzadas
  */
 
 session_start();
@@ -31,13 +25,9 @@ try {
     $obras_sociales = [];
 }
 
-// ========== FUNCIONES DE VALIDACIÓN ==========
-
+// Funciones de validación
 function sanitizeName($name) {
-    // Eliminar espacios múltiples y trimear
     $name = trim(preg_replace('/\s+/', ' ', $name));
-    
-    // Capitalizar cada palabra correctamente
     return mb_convert_case($name, MB_CASE_TITLE, 'UTF-8');
 }
 
@@ -56,17 +46,14 @@ function validateName($name, $fieldName) {
         return "El $fieldName no puede exceder 50 caracteres";
     }
     
-    // Solo letras, espacios, guiones y apóstrofes
     if (!preg_match('/^[a-záéíóúñüA-ZÁÉÍÓÚÑÜ\s\'-]+$/u', $name)) {
         return "El $fieldName solo puede contener letras, espacios, guiones y apóstrofes";
     }
     
-    // No números
     if (preg_match('/\d/', $name)) {
         return "El $fieldName no puede contener números";
     }
     
-    // No espacios múltiples
     if (preg_match('/\s{2,}/', $name)) {
         return "El $fieldName no puede tener espacios múltiples";
     }
@@ -90,7 +77,6 @@ function validateDNI($dni) {
         return 'El DNI debe tener entre 7 y 10 dígitos';
     }
     
-    // No todos los dígitos iguales
     if (preg_match('/^(\d)\1+$/', $dni)) {
         return 'El DNI no puede tener todos los dígitos iguales';
     }
@@ -118,7 +104,6 @@ function validateEmail($email) {
         return 'El email es demasiado largo';
     }
     
-    // Validar dominio (opcional pero recomendado)
     $domain = substr(strrchr($email, "@"), 1);
     if ($domain && !checkdnsrr($domain, "MX") && !checkdnsrr($domain, "A")) {
         return 'El dominio del email no existe o no es válido';
@@ -152,28 +137,23 @@ function validatePassword($password) {
         return 'La contraseña debe contener al menos un número';
     }
     
-    // Detectar contraseñas comunes
     $commonPasswords = ['password', '12345678', 'qwerty123', 'abc12345', 'password123'];
     if (in_array(strtolower($password), $commonPasswords)) {
-        return 'Esta contraseña es demasiado común, elegí una más segura';
+        return 'Esta contraseña es demasiado común, elige una más segura';
     }
     
     return null;
 }
 
-// ========== PROCESAR REGISTRO ==========
-
+// Procesar registro
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // Verificar CSRF
     $token = $_POST['csrf_token'] ?? '';
     if (!$token || !hash_equals($csrf, $token)) {
         $errors[] = 'Token de seguridad inválido. Recarga la página e intenta nuevamente.';
     } else {
-        // Sanitizar y capitalizar nombres
         $nombre = sanitizeName($_POST['nombre'] ?? '');
         $apellido = sanitizeName($_POST['apellido'] ?? '');
         
-        // Sanitizar otros campos
         $dni = trim($_POST['dni'] ?? '');
         $email = trim(strtolower($_POST['email'] ?? ''));
         $password = $_POST['password'] ?? '';
@@ -184,32 +164,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $nroCarnet = trim($_POST['nro_carnet'] ?? '');
         $libreta = trim($_POST['libreta_sanitaria'] ?? '');
         
-        // Validar nombre
         $nombreError = validateName($nombre, 'nombre');
         if ($nombreError) $errors[] = $nombreError;
         
-        // Validar apellido
         $apellidoError = validateName($apellido, 'apellido');
         if ($apellidoError) $errors[] = $apellidoError;
         
-        // Validar DNI
         $dniError = validateDNI($dni);
         if ($dniError) $errors[] = $dniError;
         
-        // Validar email
         $emailError = validateEmail($email);
         if ($emailError) $errors[] = $emailError;
         
-        // Validar contraseña
         $passwordError = validatePassword($password);
         if ($passwordError) $errors[] = $passwordError;
         
-        // Verificar coincidencia de contraseñas
         if ($password !== $password2) {
             $errors[] = 'Las contraseñas no coinciden';
         }
         
-        // Validar obra social
         if ($idObra === -1) {
             if (empty($obraOtra)) {
                 $errors[] = 'Debes especificar el nombre de la obra social';
@@ -220,42 +193,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $errors[] = 'Debes seleccionar una obra social';
         }
         
-        // ✅ VALIDACIÓN ESPECIAL: Si eligió obra social ID 7 (Sin obra social), 
-        // no debe tener número de carnet
         $stmt = $pdo->prepare("SELECT nombre FROM obra_social WHERE Id_obra_social = ?");
         $stmt->execute([$idObra]);
         $obraNombre = $stmt->fetchColumn();
         
         if ($obraNombre && stripos($obraNombre, 'sin obra social') !== false) {
-            // Si es "Sin obra social", ignorar el número de carnet
             $nroCarnet = null;
-        } elseif ($idObra > 0 && $idObra !== -1 && empty($nroCarnet)) {
-            // Si tiene obra social (que no sea "Sin obra social"), debería tener carnet
-            // Esto es opcional, puedes comentarlo si no quieres que sea obligatorio
-            // $errors[] = 'Debes ingresar el número de carnet de tu obra social';
         }
         
-        // Validar libreta sanitaria
         if (empty($libreta)) {
             $errors[] = 'La libreta sanitaria es obligatoria';
         } elseif (strlen($libreta) < 3) {
             $errors[] = 'La libreta sanitaria debe tener al menos 3 caracteres';
         }
         
-        // Si no hay errores, procesar registro
         if (empty($errors)) {
             try {
                 $pdo->beginTransaction();
                 
-                // Verificar si email o DNI ya existen
                 $stmt = $pdo->prepare("SELECT COUNT(*) FROM usuario WHERE email = ? OR dni = ?");
                 $stmt->execute([$email, $dni]);
                 
                 if ($stmt->fetchColumn() > 0) {
-                    throw new Exception('El email o DNI ya están registrados. Si ya tenés una cuenta, podés iniciar sesión.');
+                    throw new Exception('El email o DNI ya están registrados. Si ya tienes una cuenta, puedes iniciar sesión.');
                 }
                 
-                // Si eligió "Otra", crear nueva obra social
                 if ($idObra === -1 && !empty($obraOtra)) {
                     $stmt = $pdo->prepare("SELECT Id_obra_social FROM obra_social WHERE nombre = ? LIMIT 1");
                     $stmt->execute([$obraOtra]);
@@ -270,10 +232,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                 }
                 
-                // Hash de contraseña con bcrypt
                 $passwordHash = password_hash($password, PASSWORD_BCRYPT, ['cost' => 12]);
                 
-                // Insertar usuario
                 $stmtUser = $pdo->prepare("
                     INSERT INTO usuario (nombre, apellido, dni, email, password, rol, fecha_registro) 
                     VALUES (?, ?, ?, ?, ?, 'paciente', NOW())
@@ -281,7 +241,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmtUser->execute([$nombre, $apellido, $dni, $email, $passwordHash]);
                 $userId = (int)$pdo->lastInsertId();
                 
-                // Insertar paciente
                 $stmtPaciente = $pdo->prepare("
                     INSERT INTO paciente (Id_obra_social, nro_carnet, libreta_sanitaria, Id_usuario, activo) 
                     VALUES (?, ?, ?, ?, 1)
@@ -295,7 +254,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 
                 $pdo->commit();
                 
-                // Login automático
                 session_regenerate_id(true);
                 $_SESSION['Id_usuario'] = $userId;
                 $_SESSION['dni'] = $dni;
@@ -305,10 +263,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $_SESSION['Rol'] = 'paciente';
                 $_SESSION['login_time'] = time();
                 
-                // Log del registro exitoso
                 error_log("✅ New user registered: ID $userId, DNI $dni, Email $email");
                 
-                // Redirigir a index
                 header('Location: index.php');
                 exit;
                 
@@ -331,13 +287,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <title>Crear cuenta - Clínica Médica</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="<?= htmlspecialchars($csrf, ENT_QUOTES, 'UTF-8') ?>">
-    <link rel="stylesheet" href="../assets/css/register.css">
+    <link rel="stylesheet" href="../assets/css/auth.css">
+    <link rel="stylesheet" href="../assets/css/theme_light.css">
 </head>
 <body>
+    <!-- Botón de cambio de tema -->
+    <button class="theme-toggle" type="button" title="Cambiar tema">🌙</button>
+
     <div class="container">
         <div class="card">
             <h1>✨ Crear cuenta</h1>
-            <p class="subtitle">Completá tus datos para registrarte</p>
+            <p class="subtitle">Completa tus datos para registrarte</p>
 
             <?php if (!empty($errors)): ?>
             <div class="errors">
@@ -416,7 +376,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <div class="field">
                     <label for="id_obra_social">Obra Social <span class="required">*</span></label>
                     <select id="id_obra_social" name="id_obra_social" required>
-                        <option value="">Seleccioná tu obra social...</option>
+                        <option value="">Selecciona tu obra social...</option>
                         <?php 
                         $selected_obra = $_POST['id_obra_social'] ?? '';
                         foreach ($obras_sociales as $obra): 
@@ -440,7 +400,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         placeholder="Ej: IOSPER, OSECAC, etc."
                         maxlength="100"
                     >
-                    <div class="hint">Ingresá el nombre completo de tu obra social</div>
+                    <div class="hint">Ingresa el nombre completo de tu obra social</div>
                 </div>
 
                 <div class="field" id="fieldNroCarnet">
@@ -453,7 +413,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         placeholder="Ej: 123456789"
                         maxlength="50"
                     >
-                    <div class="hint">Opcional - Ingresá tu número de carnet de la obra social</div>
+                    <div class="hint">Opcional - Ingresa tu número de carnet de la obra social</div>
                 </div>
 
                 <div class="field">
@@ -490,7 +450,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         type="password" 
                         id="password2" 
                         name="password2" 
-                        placeholder="Repetí tu contraseña"
+                        placeholder="Repite tu contraseña"
                         autocomplete="new-password"
                         minlength="8"
                         maxlength="128"
@@ -502,12 +462,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </form>
 
             <div class="footer">
-                ¿Ya tenés cuenta? <a href="login.php">Iniciá sesión</a> · 
+                ¿Ya tienes cuenta? <a href="login.php">Inicia sesión</a> · 
                 <a href="index.php">Volver al inicio</a>
             </div>
         </div>
     </div>
 
+    <script src="../assets/js/theme_toggle.js"></script>
     <script src="../assets/js/register.js"></script>
 </body>
 </html>
