@@ -1,14 +1,11 @@
 <?php
-/**
- * login.php - VERSIÓN CORREGIDA
- * ✅ Todas las columnas en minúsculas
- */
 ini_set('session.cookie_httponly', 1);
 ini_set('session.cookie_secure', 0); // 0 para desarrollo local HTTP
 ini_set('session.use_only_cookies', 1);
 
 session_start();
 require_once __DIR__ . '/../../config/db.php';
+require_once __DIR__ . '/../../config/paths.php';
 
 $pdo = db();
 $error = '';
@@ -271,125 +268,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta charset="utf-8">
     <title>Iniciar sesión - Turnos Médicos</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body {
-            font-family: system-ui, -apple-system, Arial, sans-serif;
-            background: linear-gradient(135deg, #0b1220 0%, #1a2332 100%);
-            color: #e5e7eb;
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
-        }
-        .container { max-width: 420px; width: 100%; }
-        .card {
-            background: #111827;
-            border: 1px solid #1f2937;
-            border-radius: 16px;
-            padding: 32px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
-        }
-        .logo { text-align: center; margin-bottom: 24px; }
-        .logo-icon { font-size: 48px; margin-bottom: 8px; }
-        h1 {
-            color: #22d3ee;
-            margin-bottom: 8px;
-            font-size: 28px;
-            text-align: center;
-        }
-        .subtitle {
-            color: #94a3b8;
-            margin-bottom: 24px;
-            font-size: 14px;
-            text-align: center;
-        }
-        .error {
-            background: rgba(239, 68, 68, 0.1);
-            border: 1px solid #ef4444;
-            border-radius: 10px;
-            padding: 12px;
-            margin-bottom: 20px;
-            color: #ef4444;
-            font-size: 14px;
-            text-align: center;
-            animation: shake 0.5s;
-        }
-        @keyframes shake {
-            0%, 100% { transform: translateX(0); }
-            10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
-            20%, 40%, 60%, 80% { transform: translateX(5px); }
-        }
-        .error:before { content: "⚠️ "; }
-        .field { margin-bottom: 16px; }
-        label {
-            display: block;
-            color: #94a3b8;
-            font-size: 14px;
-            font-weight: 500;
-            margin-bottom: 6px;
-        }
-        input {
-            width: 100%;
-            padding: 12px;
-            background: #0b1220;
-            border: 1px solid #1f2937;
-            border-radius: 10px;
-            color: #e5e7eb;
-            font-size: 15px;
-            transition: all 0.2s;
-        }
-        input:focus {
-            outline: none;
-            border-color: #22d3ee;
-            box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.1);
-        }
-        input::placeholder { color: #6b7280; }
-        .btn {
-            width: 100%;
-            padding: 14px;
-            background: #22d3ee;
-            color: #001219;
-            border: none;
-            border-radius: 12px;
-            font-size: 16px;
-            font-weight: 700;
-            cursor: pointer;
-            transition: all 0.2s;
-            margin-top: 8px;
-        }
-        .btn:hover:not(:disabled) {
-            background: #0891b2;
-            transform: translateY(-1px);
-            box-shadow: 0 4px 12px rgba(34, 211, 238, 0.3);
-        }
-        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
-        .footer {
-            text-align: center;
-            margin-top: 20px;
-            padding-top: 20px;
-            border-top: 1px solid #1f2937;
-        }
-        .footer a {
-            color: #22d3ee;
-            text-decoration: none;
-            font-weight: 500;
-        }
-        .footer a:hover { text-decoration: underline; }
-        @media (max-width: 600px) {
-            .card { padding: 24px; }
-            h1 { font-size: 24px; }
-        }
-    </style>
+    <link rel="stylesheet" href="<?= asset('css/auth.css') ?>">
+<link rel="stylesheet" href="<?= asset('css/theme_light.css') ?>">
+<script src="<?= asset('js/theme_toggle.js') ?>"></script>
 </head>
 <body>
+   <header class="hdr" style="position:fixed;top:0;right:0;background:transparent;border:none;padding:16px;">
+    <div class="actions"></div>
+</header>
     <div class="container">
         <div class="card">
             <div class="logo">
                 <div class="logo-icon">🏥</div>
             </div>
-            
             <h1>Bienvenido</h1>
             <p class="subtitle">Ingresá tus datos para continuar</p>
 
@@ -429,53 +320,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 <button type="submit" class="btn">Iniciar sesión</button>
             </form>
-
             <div class="footer">
                 ¿No tenés cuenta? <a href="register.php">Crear cuenta</a> · 
                 <a href="index.php">Volver al inicio</a>
             </div>
         </div>
     </div>
-
     <script>
         (function() {
             'use strict';
-
             const form = document.getElementById('loginForm');
             const dniInput = document.getElementById('dni');
             const passwordInput = document.getElementById('password');
-
             // Solo números en DNI
             dniInput?.addEventListener('input', function(e) {
                 this.value = this.value.replace(/[^0-9]/g, '');
             });
-
             // Validación del formulario
             form?.addEventListener('submit', function(e) {
                 const dni = dniInput.value.trim();
                 const password = passwordInput.value;
-
                 if (!dni) {
                     e.preventDefault();
                     alert('⚠️ Por favor, ingresá tu DNI');
                     dniInput.focus();
                     return false;
                 }
-
                 if (dni.length < 7 || dni.length > 10) {
                     e.preventDefault();
                     alert('⚠️ El DNI debe tener entre 7 y 10 dígitos');
                     dniInput.focus();
                     return false;
                 }
-
                 if (!password) {
                     e.preventDefault();
                     alert('⚠️ Por favor, ingresá tu contraseña');
                     passwordInput.focus();
                     return false;
                 }
-                
                 // Deshabilitar botón para evitar doble envío
                 const submitBtn = form.querySelector('button[type="submit"]');
                 if (submitBtn) {
