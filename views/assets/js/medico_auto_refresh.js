@@ -1,16 +1,28 @@
 // views/assets/js/medico_auto_refresh.js
-// Sistema de actualización automática de estadísticas en panel médico
+// Sistema de actualización automática OPTIMIZADO
 
 (function() {
   'use strict';
 
   const API_URL = '../../controllers/medico_api.php';
   const REFRESH_INTERVAL = 30000; // 30 segundos
+  const RETRY_DELAY = 5000; // 5 segundos en caso de error
+  const MAX_RETRIES = 3;
+  
   let refreshTimer = null;
   let isRefreshing = false;
+  let retryCount = 0;
+  let lastSuccessTime = null;
+  let isPageVisible = !document.hidden;
 
   // ========== ACTUALIZACIÓN AUTOMÁTICA DE ESTADÍSTICAS ==========
   async function autoRefreshStats() {
+    // ✅ NO actualizar si el usuario no está viendo la página
+    if (!isPageVisible) {
+      console.log('⏭️ Página no visible, saltando actualización');
+      return;
+    }
+    
     if (isRefreshing) {
       console.log('⏭️ Ya hay una actualización en curso, saltando...');
       return;
@@ -21,7 +33,20 @@
     try {
       console.log('🔄 Auto-actualizando estadísticas...');
       
-      const res = await fetch(`${API_URL}?action=stats`);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+      
+      const res = await fetch(`${API_URL}?action=stats`, {
+        signal: controller.signal,
+        headers: { 'Accept': 'application/json' }
+      });
+      
+      clearTimeout(timeoutId);
+
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+
       const data = await res.json();
 
       if (data.ok) {
@@ -33,11 +58,23 @@
         
         console.log('✅ Estadísticas actualizadas:', data.stats);
         
-        // Actualizar timestamp en la UI
+        // Actualizar timestamp
+        lastSuccessTime = Date.now();
+        retryCount = 0; // Reset retry counter
         showLastUpdateTime();
+      } else {
+        throw new Error(data.error || 'Error en respuesta');
       }
     } catch (e) {
       console.error('❌ Error auto-actualizando stats:', e);
+      
+      retryCount++;
+      
+      if (retryCount >= MAX_RETRIES) {
+        console.warn('⚠️ Máximo de reintentos alcanzado, deteniendo auto-refresh');
+        stopAutoRefresh();
+        showErrorIndicator();
+      }
     } finally {
       isRefreshing = false;
     }
@@ -77,7 +114,6 @@
     let indicator = document.getElementById('lastUpdateIndicator');
     
     if (!indicator) {
-      // Crear indicador si no existe
       const statsGrid = document.querySelector('.stats-grid');
       if (!statsGrid) return;
 
@@ -116,22 +152,51 @@
       indicator.style.opacity = '0';
     }, 3000);
   }
+  
+  // ========== MOSTRAR ERROR ==========
+  function showErrorIndicator() {
+    let indicator = document.getElementById('lastUpdateIndicator');
+    if (!indicator) return;
+    
+    indicator.style.background = 'rgba(239, 68, 68, 0.9)';
+    indicator.style.color = 'white';
+    indicator.textContent = '⚠️ Error de conexión';
+    indicator.style.opacity = '1';
+    
+    setTimeout(() => {
+      indicator.style.opacity = '0';
+    }, 5000);
+  }
 
   // ========== ACTUALIZACIÓN MANUAL ==========
   window.manualRefreshStats = function() {
     console.log('🔄 Actualización manual solicitada');
+    retryCount = 0; // Reset retry counter
+    if (!refreshTimer) {
+      startAutoRefresh(); // Reiniciar si estaba detenido
+    }
     autoRefreshStats();
   };
 
   // ========== INICIAR AUTO-ACTUALIZACIÓN ==========
   function startAutoRefresh() {
+    if (refreshTimer) {
+      console.log('⚠️ Auto-refresh ya está activo');
+      return;
+    }
+    
     console.log('🚀 Iniciando auto-actualización cada', REFRESH_INTERVAL / 1000, 'segundos');
     
     // Primera actualización inmediata
     autoRefreshStats();
     
     // Configurar timer
-    refreshTimer = setInterval(autoRefreshStats, REFRESH_INTERVAL);
+    refreshTimer = setInterval(() => {
+      // Solo actualizar si la página está visible
+      if (isPageVisible) {
+        autoRefreshStats();
+      }
+    }, REFRESH_INTERVAL);
     
     // Agregar botón de actualización manual
     addManualRefreshButton();
@@ -165,7 +230,9 @@
       btn.disabled = true;
       btn.innerHTML = '⏳ Actualizando...';
       
-      autoRefreshStats().then(() => {
+      manualRefreshStats();
+      
+      setTimeout(() => {
         btn.disabled = false;
         btn.innerHTML = '🔄 Actualizar';
         
@@ -174,7 +241,7 @@
         setTimeout(() => {
           btn.style.background = '';
         }, 1000);
-      });
+      }, 1000);
     });
 
     // Insertar antes del botón "Inicio"
@@ -190,9 +257,9 @@
   function setupTabListeners() {
     document.querySelectorAll('.tab').forEach(tab => {
       tab.addEventListener('click', () => {
-        // Actualizar stats cuando se cambia de tab
+        // Actualizar stats cuando se cambia a la pestaña principal
         setTimeout(() => {
-          if (tab.dataset.tab === 'hoy') {
+          if (tab.dataset.tab === 'hoy' && isPageVisible) {
             autoRefreshStats();
           }
         }, 500);
@@ -200,11 +267,19 @@
     });
   }
 
-  // ========== ACTUALIZAR AL VOLVER A LA PESTAÑA ==========
+  // ========== MANEJAR VISIBILIDAD DE PÁGINA ==========
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) {
+    isPageVisible = !document.hidden;
+    
+    if (isPageVisible) {
       console.log('👁️ Pestaña visible de nuevo, actualizando...');
-      autoRefreshStats();
+      
+      // Si pasó mucho tiempo, actualizar inmediatamente
+      if (lastSuccessTime && (Date.now() - lastSuccessTime) > REFRESH_INTERVAL) {
+        autoRefreshStats();
+      }
+    } else {
+      console.log('👁️ Pestaña oculta, pausando actualizaciones');
     }
   });
 

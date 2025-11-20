@@ -1,5 +1,4 @@
-// admin_fixes.js - Correcciones para admin.php
-// ✅ VERSIÓN CORREGIDA - Sin bucles infinitos
+// admin_fixes.js - VERSIÓN SIN BUCLES INFINITOS
 
 (function() {
   'use strict';
@@ -10,14 +9,26 @@
 
   console.log('🔧 Cargando admin_fixes.js');
 
+  // ========== TRACK ENHANCED INPUTS ==========
+  const enhancedInputs = new WeakSet();
+
   // ========== MEJORAR SELECTORES DE HORA ==========
   
   function enhanceTimeInputs() {
     console.log('🎨 Mejorando selectores de hora...');
     
     const timeInputs = $$('input[type="time"]');
+    let enhancedCount = 0;
     
     timeInputs.forEach(input => {
+      // ✅ EVITAR RE-PROCESAR: Skip si ya fue mejorado
+      if (enhancedInputs.has(input)) {
+        return;
+      }
+      
+      enhancedInputs.add(input);
+      enhancedCount++;
+      
       input.style.cssText = `
         appearance: none;
         -webkit-appearance: none;
@@ -76,9 +87,11 @@
       }
     });
     
-    addTimePickerStyles();
+    if (enhancedCount > 0) {
+      console.log(`✅ ${enhancedCount} nuevos selectores mejorados`);
+    }
     
-    console.log('✅ Selectores de hora mejorados');
+    addTimePickerStyles();
   }
   
   function updateLabelWithTime(input) {
@@ -124,26 +137,6 @@
         box-shadow: 0 4px 12px rgba(34, 211, 238, 0.4);
       }
       
-      input[type="time"]::-webkit-calendar-picker-indicator:active {
-        transform: scale(0.95);
-      }
-      
-      input[type="time"]::-moz-calendar-picker-indicator {
-        background: linear-gradient(135deg, #22d3ee 0%, #0891b2 100%);
-        border-radius: 8px;
-        padding: 8px;
-        cursor: pointer;
-      }
-      
-      input[type="time"]::-webkit-datetime-edit {
-        padding: 0;
-        color: inherit;
-      }
-      
-      input[type="time"]::-webkit-datetime-edit-fields-wrapper {
-        padding: 0;
-      }
-      
       input[type="time"]::-webkit-datetime-edit-hour-field,
       input[type="time"]::-webkit-datetime-edit-minute-field,
       input[type="time"]::-webkit-datetime-edit-ampm-field {
@@ -162,32 +155,12 @@
         outline: 2px solid #22d3ee;
         outline-offset: 2px;
       }
-      
-      input[type="time"]::-webkit-datetime-edit-text {
-        color: #94a3b8;
-        padding: 0 4px;
-      }
-      
-      @keyframes timePickerFadeIn {
-        from {
-          opacity: 0;
-          transform: translateY(-10px);
-        }
-        to {
-          opacity: 1;
-          transform: translateY(0);
-        }
-      }
-      
-      input[type="time"]:focus {
-        animation: timePickerFadeIn 0.3s ease-out;
-      }
     `;
     
     document.head.appendChild(style);
   }
 
-  // ========== ARREGLAR ELIMINACIÓN DE MÉDICOS Y SECRETARIAS ==========
+  // ========== FUNCIONES DE ELIMINACIÓN ==========
   
   async function deleteMedico(id) {
     if (!confirm('⚠️ ATENCIÓN\n\n¿Estás seguro de eliminar este médico?\n\nSi tiene turnos asignados, solo se desactivará.\nSi no tiene turnos, se eliminará permanentemente.\n\nEsta acción no se puede deshacer.')) {
@@ -279,40 +252,55 @@
   function init() {
     console.log('🔧 Inicializando correcciones de admin...');
     
-    // Mejorar selectores de hora
+    // Mejorar selectores de hora existentes
     enhanceTimeInputs();
     
-    // ✅ CRÍTICO: Observar cambios en el DOM SOLO PARA TIME INPUTS
-    // NO observar otros cambios que puedan causar bucles
+    // ✅ SOLUCIÓN: Observador MÁS ESPECÍFICO y con DEBOUNCE
+    let observerTimeout;
     const observer = new MutationObserver((mutations) => {
-      mutations.forEach((mutation) => {
-        if (mutation.addedNodes.length) {
-          // Solo mejorar inputs de tiempo nuevos
-          mutation.addedNodes.forEach(node => {
-            if (node.nodeType === 1) { // Element node
-              if (node.matches && node.matches('input[type="time"]')) {
-                enhanceTimeInputs();
-              } else if (node.querySelectorAll) {
-                const timeInputs = node.querySelectorAll('input[type="time"]');
-                if (timeInputs.length > 0) {
-                  enhanceTimeInputs();
+      clearTimeout(observerTimeout);
+      
+      observerTimeout = setTimeout(() => {
+        let hasNewTimeInputs = false;
+        
+        mutations.forEach((mutation) => {
+          if (mutation.addedNodes.length) {
+            mutation.addedNodes.forEach(node => {
+              if (node.nodeType === 1) {
+                // Solo verificar si hay NUEVOS time inputs
+                if (node.matches && node.matches('input[type="time"]')) {
+                  hasNewTimeInputs = true;
+                } else if (node.querySelectorAll) {
+                  const timeInputs = node.querySelectorAll('input[type="time"]');
+                  if (timeInputs.length > 0) {
+                    hasNewTimeInputs = true;
+                  }
                 }
               }
-            }
-          });
+            });
+          }
+        });
+        
+        // Solo ejecutar si realmente hay nuevos inputs
+        if (hasNewTimeInputs) {
+          console.log('🔄 Detectados nuevos time inputs');
+          enhanceTimeInputs();
         }
-      });
+      }, 200); // Debounce de 200ms
     });
     
-    // ✅ Observar SOLO cambios en modales (donde se agregan inputs dinámicamente)
-    const modals = document.querySelectorAll('.modal, .modal-content');
+    // ✅ Observar SOLO los contenedores de modales
+    const modals = document.querySelectorAll('.modal, .modal-content, #modalEditMedico, #modalCreateTurno');
     modals.forEach(modal => {
-      observer.observe(modal, {
-        childList: true,
-        subtree: true
-      });
+      if (modal) {
+        observer.observe(modal, {
+          childList: true,
+          subtree: true
+        });
+      }
     });
     
+    console.log(`✅ Observando ${modals.length} contenedores de modales`);
     console.log('✅ Correcciones aplicadas (sin bucles)');
   }
   
@@ -320,7 +308,6 @@
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
   } else {
-    // Si el DOM ya está listo, ejecutar inmediatamente
     init();
   }
   
