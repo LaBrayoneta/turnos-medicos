@@ -1,4 +1,4 @@
-// views/assets/js/medico_panel.js - PANEL MÉDICO MEJORADO Y COMPLETO
+// views/assets/js/medico_panel.js - PANEL MÉDICO CON CONTROL DE ATENCIÓN
 
 (function() {
     'use strict';
@@ -7,15 +7,13 @@
     let medicoId = null;
     let csrf = '';
     let medicamentos = [];
-    let medicamentosDB = []; // Medicamentos de la BD para autocomplete
+    let medicamentosDB = [];
 
     // Inicializar
     function init() {
-        // Obtener datos del DOM
         medicoId = parseInt(document.body.dataset.medicoId);
         csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
         
-        // Cargar medicamentos de la BD
         const medicamentosData = document.querySelector('meta[name="medicamentos-data"]')?.getAttribute('content');
         if (medicamentosData) {
             try {
@@ -34,14 +32,12 @@
 
         console.log('🚀 Inicializando panel médico ID:', medicoId);
 
-        // Event listeners
         setupTabs();
         setupModal();
         setupMedicamentos();
         setupFiltros();
         setupAutocomplete();
 
-        // Cargar datos iniciales
         loadStats();
         loadTurnosHoy();
     }
@@ -66,7 +62,6 @@
     // Configurar modal
     function setupModal() {
         document.getElementById('btnCerrarModal')?.addEventListener('click', closeModal);
-
         document.getElementById('formDiagnostico')?.addEventListener('submit', async (e) => {
             e.preventDefault();
             await guardarDiagnostico();
@@ -87,7 +82,7 @@
         document.getElementById('btnBuscarHistorial')?.addEventListener('click', loadHistorial);
     }
 
-    // Configurar autocomplete de medicamentos
+    // Configurar autocomplete
     function setupAutocomplete() {
         const input = document.getElementById('recetaMedicamento');
         const autocompleteDiv = document.getElementById('medicamentoAutocomplete');
@@ -135,7 +130,6 @@
             autocompleteDiv.style.display = 'block';
         });
 
-        // Cerrar autocomplete al hacer click fuera
         document.addEventListener('click', (e) => {
             if (!input.contains(e.target) && !autocompleteDiv.contains(e.target)) {
                 autocompleteDiv.style.display = 'none';
@@ -158,12 +152,6 @@
         const date = new Date(dateStr + 'T00:00:00');
         const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
         return date.toLocaleDateString('es-AR', options);
-    }
-
-    // Formatear fecha corta
-    function formatDateShort(dateStr) {
-        const date = new Date(dateStr + 'T00:00:00');
-        return date.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
     }
 
     // Cargar estadísticas
@@ -193,7 +181,8 @@
             const data = await res.json();
 
             if (data.ok) {
-                renderTurnos(data.turnos, container);
+                // ✅ Permitir atención en "Turnos de Hoy"
+                renderTurnos(data.turnos, container, true);
             } else {
                 container.innerHTML = `<p style="color:var(--err);padding:20px">❌ ${data.error}</p>`;
             }
@@ -203,7 +192,7 @@
         }
     }
 
-// Cargar próximos turnos
+    // Cargar próximos turnos
     async function loadTurnosProximos(fecha = null) {
         const container = document.getElementById('turnosProximosContainer');
         container.innerHTML = '<p style="text-align:center;padding:20px;color:var(--muted)">⏳ Cargando...</p>';
@@ -218,7 +207,8 @@
             const data = await res.json();
 
             if (data.ok) {
-                renderTurnos(data.turnos, container);
+                // ❌ NO permitir atención en "Turnos Próximos"
+                renderTurnos(data.turnos, container, false);
             } else {
                 container.innerHTML = `<p style="color:var(--err);padding:20px">❌ ${data.error}</p>`;
             }
@@ -228,8 +218,8 @@
         }
     }
 
-    // Renderizar turnos
-    function renderTurnos(turnos, container) {
+    // ✅ CORREGIDO: Renderizar turnos con control de atención
+    function renderTurnos(turnos, container, allowAttend = true) {
         if (!turnos || turnos.length === 0) {
             container.innerHTML = `
                 <div class="empty-state">
@@ -286,11 +276,20 @@
                             </div>
                         ` : ''}
                     </div>
-                ` : `
+                ` : allowAttend ? `
                     <div class="turno-actions">
                         <button class="btn primary btn-atender" data-turno='${JSON.stringify(turno).replace(/'/g, "&#39;")}'>
                             👨‍⚕️ Atender Paciente
                         </button>
+                    </div>
+                ` : `
+                    <div style="background: rgba(251, 146, 60, 0.1); padding: 12px; border-radius: 8px; border-left: 3px solid var(--warn); margin-top: 12px;">
+                        <strong style="color:var(--warn); display: flex; align-items: center; gap: 6px;">
+                            ⏳ Turno Programado
+                        </strong>
+                        <div style="color:var(--muted);font-size:13px;margin-top:4px;">
+                            Solo se puede atender cuando llegue la fecha y hora del turno
+                        </div>
                     </div>
                 `}
             `;
@@ -298,13 +297,15 @@
             container.appendChild(card);
         });
 
-        // Event listeners
-        document.querySelectorAll('.btn-atender').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const turno = JSON.parse(btn.dataset.turno.replace(/&#39;/g, "'"));
-                openModalDiagnostico(turno);
+        // ✅ Event listeners solo para botones de atender (si existen)
+        if (allowAttend) {
+            document.querySelectorAll('.btn-atender').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const turno = JSON.parse(btn.dataset.turno.replace(/&#39;/g, "'"));
+                    openModalDiagnostico(turno);
+                });
             });
-        });
+        }
     }
 
     // Abrir modal diagnóstico
@@ -359,7 +360,6 @@
 
         renderMedicamentos();
         
-        // Mensaje de confirmación
         const msgEl = document.getElementById('msgDiagnostico');
         msgEl.textContent = '✅ Medicamento agregado a la receta';
         msgEl.className = 'msg ok';
@@ -462,7 +462,6 @@
         const desde = document.getElementById('historialDesde');
         const hasta = document.getElementById('historialHasta');
 
-        // Establecer fechas por defecto (último mes)
         const hoy = new Date();
         const haceUnMes = new Date();
         haceUnMes.setMonth(haceUnMes.getMonth() - 1);
@@ -557,7 +556,7 @@
         return div.innerHTML;
     }
 
-    // Inicializar cuando el DOM esté listo
+    // Inicializar
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', init);
     } else {

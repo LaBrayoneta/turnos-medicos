@@ -1,8 +1,7 @@
 <?php
-// views/pages/admin.php - VERSIÓN CORREGIDA CON COLUMNAS EN MINÚSCULAS
-// ✅ CRÍTICO: NO debe haber NADA antes de este <?php
+// views/pages/admin.php - VERSIÓN CON JS Y CSS EXTERNOS
+// ✅ NO debe haber NADA antes de este <?php
 
-// ✅ Configuración de errores para debugging
 error_reporting(E_ALL);
 ini_set('display_errors', '0');
 ini_set('log_errors', '1');
@@ -14,15 +13,10 @@ require_once __DIR__ . '/../../config/paths.php';
 function dbx(){ return db(); }
 
 function json_out($d, $c=200){ 
-  // Limpiar cualquier output previo
-  if (ob_get_level()) {
-    ob_end_clean();
-  }
-  
+  if (ob_get_level()) ob_end_clean();
   http_response_code($c); 
   header('Content-Type: application/json; charset=utf-8');
   header('X-Content-Type-Options: nosniff');
-  
   echo json_encode($d, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); 
   exit; 
 }
@@ -69,7 +63,6 @@ function weekday_name_es($ymd){
   return $map[$w] ?? '';
 }
 
-// ✅ Inicializar PDO con manejo de errores
 try {
   $pdo = dbx();
 } catch (Throwable $e) {
@@ -82,7 +75,6 @@ try {
   die("Error de conexión a base de datos. Verifica la configuración.");
 }
 
-// ✅ Generar CSRF token
 if (empty($_SESSION['csrf_token'])) {
   $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 }
@@ -100,54 +92,54 @@ if ($isApiRequest) {
 
   $action = $_GET['fetch'] ?? $_POST['action'] ?? '';
 
-  
   // ========== VERIFICAR TURNO DUPLICADO ==========
-if ($action === 'check_turno_existente') {
-  $pacId = (int)($_GET['paciente_id'] ?? 0);
-  $medId = (int)($_GET['medico_id'] ?? 0);
-  
-  if ($pacId <= 0 || $medId <= 0) {
-    json_out(['ok' => false, 'error' => 'Parámetros inválidos'], 400);
-  }
-  
-  try {
-    $stmt = $pdo->prepare("
-      SELECT 
-        t.Id_turno,
-        t.fecha,
-        t.estado,
-        DATE_FORMAT(t.fecha, '%d/%m/%Y %H:%i') as fecha_fmt
-      FROM turno t
-      WHERE t.Id_paciente = ?
-        AND t.Id_medico = ?
-        AND (t.estado IS NULL OR t.estado IN ('reservado', 'pendiente_confirmacion'))
-        AND t.fecha >= NOW()
-      LIMIT 1
-    ");
-    $stmt->execute([$pacId, $medId]);
-    $turno = $stmt->fetch(PDO::FETCH_ASSOC);
+  if ($action === 'check_turno_existente') {
+    $pacId = (int)($_GET['paciente_id'] ?? 0);
+    $medId = (int)($_GET['medico_id'] ?? 0);
     
-    if ($turno) {
-      json_out([
-        'ok' => true,
-        'tiene_turno' => true,
-        'turno' => $turno
-      ]);
-    } else {
-      json_out([
-        'ok' => true,
-        'tiene_turno' => false
-      ]);
+    if ($pacId <= 0 || $medId <= 0) {
+      json_out(['ok' => false, 'error' => 'Parámetros inválidos'], 400);
     }
-  } catch (Throwable $e) {
-    error_log('Error verificando turno: ' . $e->getMessage());
-    json_out(['ok' => false, 'error' => $e->getMessage()], 500);
+    
+    try {
+      $stmt = $pdo->prepare("
+        SELECT 
+          t.Id_turno,
+          t.fecha,
+          t.estado,
+          DATE_FORMAT(t.fecha, '%d/%m/%Y %H:%i') as fecha_fmt
+        FROM turno t
+        WHERE t.Id_paciente = ?
+          AND t.Id_medico = ?
+          AND (t.estado IS NULL OR t.estado IN ('reservado', 'pendiente_confirmacion', 'confirmado'))
+          AND t.fecha >= NOW()
+        LIMIT 1
+      ");
+      $stmt->execute([$pacId, $medId]);
+      $turno = $stmt->fetch(PDO::FETCH_ASSOC);
+      
+      if ($turno) {
+        json_out([
+          'ok' => true,
+          'tiene_turno' => true,
+          'turno' => $turno
+        ]);
+      } else {
+        json_out([
+          'ok' => true,
+          'tiene_turno' => false
+        ]);
+      }
+    } catch (Throwable $e) {
+      error_log('Error verificando turno: ' . $e->getMessage());
+      json_out(['ok' => false, 'error' => $e->getMessage()], 500);
+    }
   }
-}
+
   // ========== FETCH: INIT ==========
   if ($action === 'init') {
     try {
-      // ✅ Especialidades
+      // Especialidades
       $esps = $pdo->query("
         SELECT Id_Especialidad, nombre 
         FROM especialidad 
@@ -155,7 +147,7 @@ if ($action === 'check_turno_existente') {
         ORDER BY nombre
       ")->fetchAll(PDO::FETCH_ASSOC);
       
-      // ✅ Médicos con horarios
+      // Médicos con horarios
       $meds = $pdo->query("
         SELECT m.Id_medico, u.apellido, u.nombre, u.dni, u.email, 
                e.nombre AS Especialidad, m.legajo, m.Id_Especialidad
@@ -179,7 +171,6 @@ if ($action === 'check_turno_existente') {
         $horarios = $stHorarios->fetchAll(PDO::FETCH_ASSOC);
         $med['horarios'] = $horarios;
         
-        // Formatear para JS
         foreach($med['horarios'] as &$h) {
           $h['Dia_semana'] = $h['dia_semana'];
           $h['Hora_inicio'] = $h['hora_inicio'];
@@ -187,7 +178,6 @@ if ($action === 'check_turno_existente') {
         }
         unset($h);
         
-        // Formatear datos del médico
         $med['Apellido'] = $med['apellido'];
         $med['Nombre'] = $med['nombre'];
         $med['Legajo'] = $med['legajo'];
@@ -197,7 +187,7 @@ if ($action === 'check_turno_existente') {
       }
       unset($med);
       
-      // ✅ Secretarias
+      // Secretarias
       $secs = $pdo->query("
         SELECT s.Id_secretaria, u.apellido, u.nombre, u.dni, u.email, u.Id_usuario
         FROM secretaria s
@@ -206,21 +196,19 @@ if ($action === 'check_turno_existente') {
         ORDER BY u.apellido, u.nombre
       ")->fetchAll(PDO::FETCH_ASSOC);
       
-      // Formatear para JS
       foreach($secs as &$sec) {
         $sec['Apellido'] = $sec['apellido'];
         $sec['Nombre'] = $sec['nombre'];
       }
       unset($sec);
       
-      // ✅ Obras sociales
+      // Obras sociales
       $obras = $pdo->query("
         SELECT Id_obra_social, nombre, activo 
         FROM obra_social 
         ORDER BY nombre
       ")->fetchAll(PDO::FETCH_ASSOC);
       
-      // Formatear para JS
       foreach($obras as &$obra) {
         $obra['Nombre'] = $obra['nombre'];
         $obra['Activo'] = $obra['activo'];
@@ -322,7 +310,6 @@ if ($action === 'check_turno_existente') {
 
       $pdo->beginTransaction();
 
-      // ✅ TODAS LAS COLUMNAS EN MINÚSCULAS
       $stmt = $pdo->prepare("INSERT INTO usuario (nombre, apellido, dni, email, password, rol) VALUES (?,?,?,?,?,'medico')");
       $stmt->execute([$nombre, $apellido, $dni, $email, $password]);
       $idUsuario = $pdo->lastInsertId();
@@ -369,7 +356,6 @@ if ($action === 'check_turno_existente') {
 
       $pdo->beginTransaction();
 
-      // ✅ COLUMNAS EN MINÚSCULAS
       $stmt = $pdo->prepare("UPDATE usuario SET nombre=?, apellido=?, email=? WHERE Id_usuario=?");
       $stmt->execute([$nombre, $apellido, $email, $idUsuario]);
 
@@ -396,70 +382,62 @@ if ($action === 'check_turno_existente') {
     }
   }
 
- // ========== ELIMINAR MÉDICO FÍSICAMENTE ==========
-if ($action === 'delete_medico') {
+  if ($action === 'delete_medico') {
     ensure_csrf();
     try {
-        $idMed = (int)($_POST['id_medico'] ?? 0);
-        if ($idMed <= 0) throw new Exception('ID inválido');
+      $idMed = (int)($_POST['id_medico'] ?? 0);
+      if ($idMed <= 0) throw new Exception('ID inválido');
 
-        $pdo->beginTransaction();
+      $pdo->beginTransaction();
 
-        // Verificar si tiene turnos, diagnósticos o recetas
-        $stmt = $pdo->prepare("SELECT COUNT(*) FROM turno WHERE Id_medico=?");
+      $stmt = $pdo->prepare("SELECT COUNT(*) FROM turno WHERE Id_medico=?");
+      $stmt->execute([$idMed]);
+      $hasTurnos = $stmt->fetchColumn() > 0;
+      
+      $stmt = $pdo->prepare("SELECT COUNT(*) FROM diagnostico WHERE Id_medico=?");
+      $stmt->execute([$idMed]);
+      $hasDiagnosticos = $stmt->fetchColumn() > 0;
+      
+      $stmt = $pdo->prepare("SELECT COUNT(*) FROM receta WHERE Id_medico=?");
+      $stmt->execute([$idMed]);
+      $hasRecetas = $stmt->fetchColumn() > 0;
+      
+      $stmt = $pdo->prepare("SELECT COUNT(*) FROM historial_clinico WHERE Id_medico=?");
+      $stmt->execute([$idMed]);
+      $hasHistorial = $stmt->fetchColumn() > 0;
+
+      if ($hasTurnos || $hasDiagnosticos || $hasRecetas || $hasHistorial) {
+        $stmt = $pdo->prepare("UPDATE medico SET activo=0 WHERE Id_medico=?");
         $stmt->execute([$idMed]);
-        $hasTurnos = $stmt->fetchColumn() > 0;
+        $mensaje = 'Médico desactivado (tiene registros médicos asociados)';
+      } else {
+        $stmt = $pdo->prepare("SELECT Id_usuario FROM medico WHERE Id_medico=?");
+        $stmt->execute([$idMed]);
+        $idUsuario = $stmt->fetchColumn();
         
-        $stmt = $pdo->prepare("SELECT COUNT(*) FROM diagnostico WHERE Id_medico=?");
+        if (!$idUsuario) throw new Exception('Médico no encontrado');
+
+        $stmt = $pdo->prepare("DELETE FROM horario_medico WHERE Id_medico=?");
         $stmt->execute([$idMed]);
-        $hasDiagnosticos = $stmt->fetchColumn() > 0;
-        
-        $stmt = $pdo->prepare("SELECT COUNT(*) FROM receta WHERE Id_medico=?");
+
+        $stmt = $pdo->prepare("DELETE FROM medico WHERE Id_medico=?");
         $stmt->execute([$idMed]);
-        $hasRecetas = $stmt->fetchColumn() > 0;
-        
-        $stmt = $pdo->prepare("SELECT COUNT(*) FROM historial_clinico WHERE Id_medico=?");
-        $stmt->execute([$idMed]);
-        $hasHistorial = $stmt->fetchColumn() > 0;
 
-        if ($hasTurnos || $hasDiagnosticos || $hasRecetas || $hasHistorial) {
-            // Tiene registros asociados - SOLO desactivar
-            $stmt = $pdo->prepare("UPDATE medico SET activo=0 WHERE Id_medico=?");
-            $stmt->execute([$idMed]);
-            $mensaje = 'Médico desactivado (tiene registros médicos asociados)';
-        } else {
-            // NO tiene registros - eliminar físicamente
-            
-            // 1. Obtener Id_usuario
-            $stmt = $pdo->prepare("SELECT Id_usuario FROM medico WHERE Id_medico=?");
-            $stmt->execute([$idMed]);
-            $idUsuario = $stmt->fetchColumn();
-            
-            if (!$idUsuario) throw new Exception('Médico no encontrado');
+        $stmt = $pdo->prepare("DELETE FROM usuario WHERE Id_usuario=?");
+        $stmt->execute([$idUsuario]);
 
-            // 2. Eliminar horarios (CASCADE debe funcionar aquí)
-            $stmt = $pdo->prepare("DELETE FROM horario_medico WHERE Id_medico=?");
-            $stmt->execute([$idMed]);
+        $mensaje = 'Médico eliminado completamente';
+      }
 
-            // 3. Eliminar médico
-            $stmt = $pdo->prepare("DELETE FROM medico WHERE Id_medico=?");
-            $stmt->execute([$idMed]);
-
-            // 4. Eliminar usuario
-            $stmt = $pdo->prepare("DELETE FROM usuario WHERE Id_usuario=?");
-            $stmt->execute([$idUsuario]);
-
-            $mensaje = 'Médico eliminado completamente';
-        }
-
-        $pdo->commit();
-        json_out(['ok'=>true,'msg'=>$mensaje]);
+      $pdo->commit();
+      json_out(['ok'=>true,'msg'=>$mensaje]);
     } catch (Throwable $e) {
-        if ($pdo->inTransaction()) $pdo->rollBack();
-        error_log("Error deleting medico: " . $e->getMessage());
-        json_out(['ok'=>false,'error'=>'No se puede eliminar: ' . $e->getMessage()],500);
+      if ($pdo->inTransaction()) $pdo->rollBack();
+      error_log("Error deleting medico: " . $e->getMessage());
+      json_out(['ok'=>false,'error'=>'No se puede eliminar: ' . $e->getMessage()],500);
     }
-}
+  }
+
   // ========== SECRETARIAS ==========
   if ($action === 'create_secretaria') {
     ensure_csrf();
@@ -474,7 +452,6 @@ if ($action === 'delete_medico') {
 
       if (!$nombre || !$apellido || !$dni || !$email) throw new Exception('Faltan campos');
 
-      // ✅ COLUMNAS EN MINÚSCULAS
       $stmt = $pdo->prepare("INSERT INTO usuario (nombre, apellido, dni, email, password, rol) VALUES (?,?,?,?,?,'secretaria')");
       $stmt->execute([$nombre, $apellido, $dni, $email, $password]);
       $idUsuario = $pdo->lastInsertId();
@@ -503,7 +480,6 @@ if ($action === 'delete_medico') {
       $idUsuario = $stmt->fetchColumn();
       if (!$idUsuario) throw new Exception('Secretaria no encontrada');
 
-      // ✅ COLUMNAS EN MINÚSCULAS
       $stmt = $pdo->prepare("UPDATE usuario SET nombre=?, apellido=?, email=? WHERE Id_usuario=?");
       $stmt->execute([$nombre, $apellido, $email, $idUsuario]);
 
@@ -516,49 +492,43 @@ if ($action === 'delete_medico') {
   if ($action === 'delete_secretaria') {
     ensure_csrf();
     try {
-        $idSec = (int)($_POST['id_secretaria'] ?? 0);
-        if ($idSec <= 0) throw new Exception('ID inválido');
+      $idSec = (int)($_POST['id_secretaria'] ?? 0);
+      if ($idSec <= 0) throw new Exception('ID inválido');
 
-        $pdo->beginTransaction();
+      $pdo->beginTransaction();
 
-        // Verificar si tiene turnos creados
-        $stmt = $pdo->prepare("SELECT COUNT(*) FROM turno WHERE Id_secretaria=?");
+      $stmt = $pdo->prepare("SELECT COUNT(*) FROM turno WHERE Id_secretaria=?");
+      $stmt->execute([$idSec]);
+      $hasTurnos = $stmt->fetchColumn() > 0;
+
+      if ($hasTurnos) {
+        $stmt = $pdo->prepare("UPDATE secretaria SET activo=0 WHERE Id_secretaria=?");
         $stmt->execute([$idSec]);
-        $hasTurnos = $stmt->fetchColumn() > 0;
+        $mensaje = 'Secretaria desactivada (tiene turnos asociados)';
+      } else {
+        $stmt = $pdo->prepare("SELECT Id_usuario FROM secretaria WHERE Id_secretaria=?");
+        $stmt->execute([$idSec]);
+        $idUsuario = $stmt->fetchColumn();
+        
+        if (!$idUsuario) throw new Exception('Secretaria no encontrada');
 
-        if ($hasTurnos) {
-            // Si creó turnos, solo desactivar
-            $stmt = $pdo->prepare("UPDATE secretaria SET activo=0 WHERE Id_secretaria=?");
-            $stmt->execute([$idSec]);
-            $mensaje = 'Secretaria desactivada (tiene turnos asociados)';
-        } else {
-            // No tiene turnos, eliminar físicamente
-            
-            // 1. Obtener Id_usuario
-            $stmt = $pdo->prepare("SELECT Id_usuario FROM secretaria WHERE Id_secretaria=?");
-            $stmt->execute([$idSec]);
-            $idUsuario = $stmt->fetchColumn();
-            
-            if (!$idUsuario) throw new Exception('Secretaria no encontrada');
+        $stmt = $pdo->prepare("DELETE FROM secretaria WHERE Id_secretaria=?");
+        $stmt->execute([$idSec]);
 
-            // 2. Eliminar secretaria
-            $stmt = $pdo->prepare("DELETE FROM secretaria WHERE Id_secretaria=?");
-            $stmt->execute([$idSec]);
+        $stmt = $pdo->prepare("DELETE FROM usuario WHERE Id_usuario=?");
+        $stmt->execute([$idUsuario]);
 
-            // 3. Eliminar usuario
-            $stmt = $pdo->prepare("DELETE FROM usuario WHERE Id_usuario=?");
-            $stmt->execute([$idUsuario]);
+        $mensaje = 'Secretaria eliminada completamente';
+      }
 
-            $mensaje = 'Secretaria eliminada completamente';
-        }
-
-        $pdo->commit();
-        json_out(['ok'=>true,'msg'=>$mensaje]);
+      $pdo->commit();
+      json_out(['ok'=>true,'msg'=>$mensaje]);
     } catch (Throwable $e) {
-        if ($pdo->inTransaction()) $pdo->rollBack();
-        json_out(['ok'=>false,'error'=>$e->getMessage()],500);
+      if ($pdo->inTransaction()) $pdo->rollBack();
+      json_out(['ok'=>false,'error'=>$e->getMessage()],500);
     }
-}
+  }
+
   // ========== TURNOS ==========
   if ($action === 'doctors') {
     $espId = (int)($_GET['especialidad_id'] ?? 0);
@@ -574,7 +544,6 @@ if ($action === 'delete_medico') {
     $stmt->execute([$espId]);
     $items = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
-    // Formatear para JS
     foreach($items as &$item) {
       $item['Apellido'] = $item['apellido'];
       $item['Nombre'] = $item['nombre'];
@@ -695,7 +664,6 @@ if ($action === 'delete_medico') {
     $stmt->execute([$like, $like, $like, $like]);
     $items = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
-    // Formatear para JS
     foreach($items as &$item) {
       $item['Nombre'] = $item['nombre'];
       $item['Apellido'] = $item['apellido'];
@@ -705,9 +673,7 @@ if ($action === 'delete_medico') {
     json_out(['ok'=>true,'items'=>$items]);
   }
 
-  //Crear turno = CONFIRMADO automáticamente
-
-if ($action === 'create_turno') {
+  if ($action === 'create_turno') {
     ensure_csrf();
     try {
       $medId = (int)($_POST['medico_id'] ?? 0);
@@ -722,7 +688,6 @@ if ($action === 'create_turno') {
 
       $fechaHora = "$date $time:00";
 
-      // ✅ Verificar turno duplicado
       $chkExisting = $pdo->prepare("
         SELECT COUNT(*) FROM turno 
         WHERE Id_paciente = ? 
@@ -736,7 +701,6 @@ if ($action === 'create_turno') {
         throw new Exception('Este paciente ya tiene un turno activo con este médico');
       }
 
-      // Verificar slot disponible
       $check = $pdo->prepare("
         SELECT 1 FROM turno 
         WHERE fecha=? AND Id_medico=? AND estado IN ('pendiente_confirmacion', 'confirmado')
@@ -745,7 +709,6 @@ if ($action === 'create_turno') {
       $check->execute([$fechaHora, $medId]);
       if ($check->fetch()) throw new Exception('Ese horario ya está ocupado');
 
-      // ✅ CREAR TURNO CONFIRMADO (no pendiente)
       $stmt = $pdo->prepare("
         INSERT INTO turno (fecha, estado, Id_paciente, Id_medico, Id_secretaria, fecha_confirmacion, Id_staff_confirma) 
         VALUES (?, 'confirmado', ?, ?, ?, NOW(), ?)
@@ -756,8 +719,7 @@ if ($action === 'create_turno') {
     } catch (Throwable $e) {
       json_out(['ok'=>false,'error'=>$e->getMessage()],500);
     }
-}
-
+  }
 
   if ($action === 'cancel_turno') {
     ensure_csrf();
@@ -814,7 +776,7 @@ if ($action === 'create_turno') {
 
       $stmt = $pdo->prepare("
         UPDATE turno 
-        SET fecha=?, Id_medico=?, estado='reservado' 
+        SET fecha=?, Id_medico=?, estado='confirmado' 
         WHERE Id_turno=?
       ");
       $stmt->execute([$fechaHora, $medId, $turnoId]);
@@ -824,309 +786,227 @@ if ($action === 'create_turno') {
       json_out(['ok'=>false,'error'=>$e->getMessage()],500);
     }
   }
-        json_out(['ok' => false, 'error' => $e->getMessage()], 500);
-// ========== RECHAZAR TURNO ==========
-if ($action === 'rechazar_turno') {
+
+  // ========== TURNOS PENDIENTES ==========
+  if ($action === 'turnos_pendientes') {
+    try {
+      $where = "t.estado = 'pendiente_confirmacion'";
+      $params = [];
+      
+      $espId = (int)($_GET['especialidad_id'] ?? 0);
+      if ($espId > 0) {
+        $where .= " AND m.Id_Especialidad = ?";
+        $params[] = $espId;
+      }
+      
+      $medId = (int)($_GET['medico_id'] ?? 0);
+      if ($medId > 0) {
+        $where .= " AND t.Id_medico = ?";
+        $params[] = $medId;
+      }
+      
+      $from = $_GET['from'] ?? '';
+      if ($from && preg_match('/^\d{4}-\d{2}-\d{2}$/', $from)) {
+        $where .= " AND DATE(t.fecha) >= ?";
+        $params[] = $from;
+      }
+      
+      $to = $_GET['to'] ?? '';
+      if ($to && preg_match('/^\d{4}-\d{2}-\d{2}$/', $to)) {
+        $where .= " AND DATE(t.fecha) <= ?";
+        $params[] = $to;
+      }
+
+      $stmt = $pdo->prepare("
+        SELECT 
+          t.Id_turno,
+          t.fecha,
+          t.Id_medico,
+          DATE_FORMAT(t.fecha, '%d/%m/%Y %H:%i') as fecha_fmt,
+          CONCAT(up.apellido, ', ', up.nombre) AS paciente,
+          up.dni AS paciente_dni,
+          up.email AS paciente_email,
+          CONCAT(um.apellido, ', ', um.nombre) AS medico,
+          e.nombre AS especialidad,
+          os.nombre AS obra_social
+        FROM turno t
+        JOIN paciente p ON p.Id_paciente = t.Id_paciente
+        JOIN usuario up ON up.Id_usuario = p.Id_usuario
+        JOIN medico m ON m.Id_medico = t.Id_medico
+        JOIN usuario um ON um.Id_usuario = m.Id_usuario
+        LEFT JOIN especialidad e ON e.Id_Especialidad = m.Id_Especialidad
+        LEFT JOIN obra_social os ON os.Id_obra_social = p.Id_obra_social
+        WHERE $where
+        ORDER BY t.fecha ASC
+      ");
+      $stmt->execute($params);
+
+      $items = [];
+      foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $items[] = [
+          'Id_turno' => (int)$r['Id_turno'],
+          'Id_medico' => (int)$r['Id_medico'],
+          'fecha' => $r['fecha'],
+          'fecha_fmt' => $r['fecha_fmt'],
+          'paciente' => $r['paciente'],
+          'paciente_dni' => $r['paciente_dni'],
+          'paciente_email' => $r['paciente_email'],
+          'medico' => $r['medico'],
+          'especialidad' => $r['especialidad'],
+          'obra_social' => $r['obra_social'] ?? 'Sin obra social'
+        ];
+      }
+
+      json_out(['ok'=>true,'items'=>$items]);
+    } catch (Throwable $e) {
+      error_log('Error en turnos_pendientes: ' . $e->getMessage());
+      json_out(['ok'=>false,'error'=>$e->getMessage()], 500);
+    }
+  }
+
+  // ========== CONFIRMAR TURNO ==========
+  if ($action === 'confirmar_turno') {
     ensure_csrf();
     require_once __DIR__ . '/../../config/email.php';
     
     try {
-        $turnoId = (int)($_POST['turno_id'] ?? 0);
-        $motivo = trim($_POST['motivo'] ?? '');
-        
-        if ($turnoId <= 0) throw new Exception('Turno inválido');
-        if (empty($motivo)) throw new Exception('Debe especificar el motivo del rechazo');
-        if (strlen($motivo) < 10) throw new Exception('El motivo debe tener al menos 10 caracteres');
-        if (strlen($motivo) > 500) throw new Exception('El motivo es demasiado largo (máximo 500 caracteres)');
-        
-        // Obtener nombre del staff
-        $stmt = $pdo->prepare("SELECT nombre, apellido FROM usuario WHERE Id_usuario = ?");
-        $stmt->execute([$uid]);
-        $staff = $stmt->fetch(PDO::FETCH_ASSOC);
-        
-        if (!$staff) throw new Exception('Usuario no encontrado');
-        
-        $staffNombre = trim(($staff['apellido'] ?? '') . ', ' . ($staff['nombre'] ?? ''));
-        
-        // Verificar que el turno existe
-        $stmt = $pdo->prepare("SELECT estado FROM turno WHERE Id_turno = ?");
-        $stmt->execute([$turnoId]);
-        $turno = $stmt->fetch(PDO::FETCH_ASSOC);
-        
-        if (!$turno) {
-            throw new Exception('Turno no encontrado');
-        }
-        
-        if ($turno['estado'] === 'rechazado') {
-            throw new Exception('Este turno ya fue rechazado');
-        }
-        
-        // Iniciar transacción
-        $pdo->beginTransaction();
-        
-        // Actualizar turno
-        $idStaff = $isSec ? $mySecId : $uid;
-        $stmt = $pdo->prepare("
-            UPDATE turno 
-            SET estado = 'rechazado',
-                fecha_confirmacion = NOW(),
-                Id_staff_confirma = ?,
-                motivo_rechazo = ?
-            WHERE Id_turno = ?
-        ");
-        $stmt->execute([$idStaff, $motivo, $turnoId]);
-        
-        // Enviar email de rechazo
-        $resultadoEmail = notificarTurnoRechazado($turnoId, $motivo, $staffNombre, $pdo);
-        
-        $pdo->commit();
-        
-        if ($resultadoEmail['ok']) {
-            json_out([
-                'ok' => true, 
-                'msg' => 'Turno rechazado y email enviado al paciente'
-            ]);
-        } else {
-            json_out([
-                'ok' => true, 
-                'msg' => 'Turno rechazado pero hubo un error al enviar el email: ' . ($resultadoEmail['error'] ?? 'desconocido')
-            ]);
-        }
-        
+      $turnoId = (int)($_POST['turno_id'] ?? 0);
+      if ($turnoId <= 0) throw new Exception('Turno inválido');
+      
+      $stmt = $pdo->prepare("SELECT nombre, apellido FROM usuario WHERE Id_usuario = ?");
+      $stmt->execute([$uid]);
+      $staff = $stmt->fetch(PDO::FETCH_ASSOC);
+      
+      if (!$staff) throw new Exception('Usuario no encontrado');
+      
+      $staffNombre = trim(($staff['apellido'] ?? '') . ', ' . ($staff['nombre'] ?? ''));
+      
+      $stmt = $pdo->prepare("SELECT estado FROM turno WHERE Id_turno = ?");
+      $stmt->execute([$turnoId]);
+      $turno = $stmt->fetch(PDO::FETCH_ASSOC);
+      
+      if (!$turno) {
+        throw new Exception('Turno no encontrado');
+      }
+      
+      if ($turno['estado'] === 'confirmado') {
+        throw new Exception('Este turno ya está confirmado');
+      }
+      
+      if ($turno['estado'] === 'rechazado') {
+        throw new Exception('Este turno fue rechazado previamente');
+      }
+      
+      $pdo->beginTransaction();
+      
+      $idStaff = $isSec ? $mySecId : $uid;
+      $stmt = $pdo->prepare("
+        UPDATE turno 
+        SET estado = 'confirmado',
+            fecha_confirmacion = NOW(),
+            Id_staff_confirma = ?,
+            motivo_rechazo = NULL
+        WHERE Id_turno = ?
+      ");
+      $stmt->execute([$idStaff, $turnoId]);
+      
+      $resultadoEmail = notificarTurnoConfirmado($turnoId, $staffNombre, $pdo);
+      
+      $pdo->commit();
+      
+      if ($resultadoEmail['ok']) {
+        json_out([
+          'ok' => true, 
+          'msg' => 'Turno confirmado y email enviado al paciente'
+        ]);
+      } else {
+        json_out([
+          'ok' => true, 
+          'msg' => 'Turno confirmado pero hubo un error al enviar el email: ' . ($resultadoEmail['error'] ?? 'desconocido')
+        ]);
+      }
+      
     } catch (Throwable $e) {
-        if ($pdo->inTransaction()) $pdo->rollBack();
-        error_log("Error rechazando turno: " . $e->getMessage());
-        json_out(['ok' => false, 'error' => $e->getMessage()], 500);
+      if ($pdo->inTransaction()) $pdo->rollBack();
+      error_log("Error confirmando turno: " . $e->getMessage());
+      json_out(['ok' => false, 'error' => $e->getMessage()], 500);
     }
-}
+  }
+
+  // ========== RECHAZAR TURNO ==========
+  if ($action === 'rechazar_turno') {
+    ensure_csrf();
+    require_once __DIR__ . '/../../config/email.php';
+    
+    try {
+      $turnoId = (int)($_POST['turno_id'] ?? 0);
+      $motivo = trim($_POST['motivo'] ?? '');
+      
+      if ($turnoId <= 0) throw new Exception('Turno inválido');
+      if (empty($motivo)) throw new Exception('Debe especificar el motivo del rechazo');
+      if (strlen($motivo) < 10) throw new Exception('El motivo debe tener al menos 10 caracteres');
+      if (strlen($motivo) > 500) throw new Exception('El motivo es demasiado largo (máximo 500 caracteres)');
+      
+      $stmt = $pdo->prepare("SELECT nombre, apellido FROM usuario WHERE Id_usuario = ?");
+      $stmt->execute([$uid]);
+      $staff = $stmt->fetch(PDO::FETCH_ASSOC);
+      
+      if (!$staff) throw new Exception('Usuario no encontrado');
+      
+      $staffNombre = trim(($staff['apellido'] ?? '') . ', ' . ($staff['nombre'] ?? ''));
+      
+      $stmt = $pdo->prepare("SELECT estado FROM turno WHERE Id_turno = ?");
+      $stmt->execute([$turnoId]);
+      $turno = $stmt->fetch(PDO::FETCH_ASSOC);
+      
+      if (!$turno) {
+        throw new Exception('Turno no encontrado');
+      }
+      
+      if ($turno['estado'] === 'rechazado') {
+        throw new Exception('Este turno ya fue rechazado');
+      }
+      
+      $pdo->beginTransaction();
+      
+      $idStaff = $isSec ? $mySecId : $uid;
+      $stmt = $pdo->prepare("
+        UPDATE turno 
+        SET estado = 'rechazado',
+            fecha_confirmacion = NOW(),
+            Id_staff_confirma = ?,
+            motivo_rechazo = ?
+        WHERE Id_turno = ?
+      ");
+      $stmt->execute([$idStaff, $motivo, $turnoId]);
+      
+      $resultadoEmail = notificarTurnoRechazado($turnoId, $motivo, $staffNombre, $pdo);
+      
+      $pdo->commit();
+      
+      if ($resultadoEmail['ok']) {
+        json_out([
+          'ok' => true, 
+          'msg' => 'Turno rechazado y email enviado al paciente'
+        ]);
+      } else {
+        json_out([
+          'ok' => true, 
+          'msg' => 'Turno rechazado pero hubo un error al enviar el email: ' . ($resultadoEmail['error'] ?? 'desconocido')
+        ]);
+      }
+      
+    } catch (Throwable $e) {
+      if ($pdo->inTransaction()) $pdo->rollBack();
+      error_log("Error rechazando turno: " . $e->getMessage());
+      json_out(['ok' => false, 'error' => $e->getMessage()], 500);
+    }
+  }
+
+  // Si llegamos aquí, la acción no fue reconocida
   json_out(['ok'=>false,'error'=>'Acción no soportada: ' . $action],400);
 }
-// ========== FETCH: TURNOS PENDIENTES ==========
-if ($action === 'turnos_pendientes') {
-  try {
-    $where = "t.estado = 'pendiente_confirmacion'";
-    $params = [];
-    
-    // Filtros opcionales
-    $espId = (int)($_GET['especialidad_id'] ?? 0);
-    if ($espId > 0) {
-      $where .= " AND m.Id_Especialidad = ?";
-      $params[] = $espId;
-    }
-    
-    $medId = (int)($_GET['medico_id'] ?? 0);
-    if ($medId > 0) {
-      $where .= " AND t.Id_medico = ?";
-      $params[] = $medId;
-    }
-    
-    $from = $_GET['from'] ?? '';
-    if ($from && preg_match('/^\d{4}-\d{2}-\d{2}$/', $from)) {
-      $where .= " AND DATE(t.fecha) >= ?";
-      $params[] = $from;
-    }
-    
-    $to = $_GET['to'] ?? '';
-    if ($to && preg_match('/^\d{4}-\d{2}-\d{2}$/', $to)) {
-      $where .= " AND DATE(t.fecha) <= ?";
-      $params[] = $to;
-    }
 
-    $stmt = $pdo->prepare("
-      SELECT 
-        t.Id_turno,
-        t.fecha,
-        t.Id_medico,
-        DATE_FORMAT(t.fecha, '%d/%m/%Y %H:%i') as fecha_fmt,
-        CONCAT(up.apellido, ', ', up.nombre) AS paciente,
-        up.dni AS paciente_dni,
-        up.email AS paciente_email,
-        CONCAT(um.apellido, ', ', um.nombre) AS medico,
-        e.nombre AS especialidad,
-        os.nombre AS obra_social
-      FROM turno t
-      JOIN paciente p ON p.Id_paciente = t.Id_paciente
-      JOIN usuario up ON up.Id_usuario = p.Id_usuario
-      JOIN medico m ON m.Id_medico = t.Id_medico
-      JOIN usuario um ON um.Id_usuario = m.Id_usuario
-      LEFT JOIN especialidad e ON e.Id_Especialidad = m.Id_Especialidad
-      LEFT JOIN obra_social os ON os.Id_obra_social = p.Id_obra_social
-      WHERE $where
-      ORDER BY t.fecha ASC
-    ");
-    $stmt->execute($params);
-
-    $items = [];
-    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
-      $items[] = [
-        'Id_turno' => (int)$r['Id_turno'],
-        'Id_medico' => (int)$r['Id_medico'],
-        'fecha' => $r['fecha'],
-        'fecha_fmt' => $r['fecha_fmt'],
-        'paciente' => $r['paciente'],
-        'paciente_dni' => $r['paciente_dni'],
-        'paciente_email' => $r['paciente_email'],
-        'medico' => $r['medico'],
-        'especialidad' => $r['especialidad'],
-        'obra_social' => $r['obra_social'] ?? 'Sin obra social'
-      ];
-    }
-
-    json_out(['ok'=>true,'items'=>$items]);
-  } catch (Throwable $e) {
-    error_log('Error en turnos_pendientes: ' . $e->getMessage());
-    json_out(['ok'=>false,'error'=>$e->getMessage()], 500);
-  }
-}
-
-// ========== CONFIRMAR TURNO ==========
-if ($action === 'confirmar_turno') {
-    ensure_csrf();
-    require_once __DIR__ . '/../../config/email.php';
-    
-    try {
-        $turnoId = (int)($_POST['turno_id'] ?? 0);
-        if ($turnoId <= 0) throw new Exception('Turno inválido');
-        
-        // Obtener nombre del staff
-        $stmt = $pdo->prepare("SELECT nombre, apellido FROM usuario WHERE Id_usuario = ?");
-        $stmt->execute([$uid]);
-        $staff = $stmt->fetch(PDO::FETCH_ASSOC);
-        
-        if (!$staff) throw new Exception('Usuario no encontrado');
-        
-        $staffNombre = trim(($staff['apellido'] ?? '') . ', ' . ($staff['nombre'] ?? ''));
-        
-        // Verificar estado del turno
-        $stmt = $pdo->prepare("SELECT estado FROM turno WHERE Id_turno = ?");
-        $stmt->execute([$turnoId]);
-        $turno = $stmt->fetch(PDO::FETCH_ASSOC);
-        
-        if (!$turno) {
-            throw new Exception('Turno no encontrado');
-        }
-        
-        if ($turno['estado'] === 'confirmado') {
-            throw new Exception('Este turno ya está confirmado');
-        }
-        
-        if ($turno['estado'] === 'rechazado') {
-            throw new Exception('Este turno fue rechazado previamente');
-        }
-        
-        // Iniciar transacción
-        $pdo->beginTransaction();
-        
-        // Actualizar turno a CONFIRMADO
-        $idStaff = $isSec ? $mySecId : $uid;
-        $stmt = $pdo->prepare("
-            UPDATE turno 
-            SET estado = 'confirmado',
-                fecha_confirmacion = NOW(),
-                Id_staff_confirma = ?,
-                motivo_rechazo = NULL
-            WHERE Id_turno = ?
-        ");
-        $stmt->execute([$idStaff, $turnoId]);
-        
-        // Enviar email de confirmación
-        $resultadoEmail = notificarTurnoConfirmado($turnoId, $staffNombre, $pdo);
-        
-        $pdo->commit();
-        
-        if ($resultadoEmail['ok']) {
-            json_out([
-                'ok' => true, 
-                'msg' => 'Turno confirmado y email enviado al paciente'
-            ]);
-        } else {
-            json_out([
-                'ok' => true, 
-                'msg' => 'Turno confirmado pero hubo un error al enviar el email: ' . ($resultadoEmail['error'] ?? 'desconocido')
-            ]);
-        }
-        
-    } catch (Throwable $e) {
-        if ($pdo->inTransaction()) $pdo->rollBack();
-        error_log("Error confirmando turno: " . $e->getMessage());
-        json_out(['ok' => false, 'error' => $e->getMessage()], 500);
-    }
-}
-
-// ========== RECHAZAR TURNO ==========
-if ($action === 'rechazar_turno') {
-    ensure_csrf();
-    require_once __DIR__ . '/../../config/email.php';
-    
-    try {
-        $turnoId = (int)($_POST['turno_id'] ?? 0);
-        $motivo = trim($_POST['motivo'] ?? '');
-        
-        if ($turnoId <= 0) throw new Exception('Turno inválido');
-        if (empty($motivo)) throw new Exception('Debe especificar el motivo del rechazo');
-        if (strlen($motivo) < 10) throw new Exception('El motivo debe tener al menos 10 caracteres');
-        if (strlen($motivo) > 500) throw new Exception('El motivo es demasiado largo (máximo 500 caracteres)');
-        
-        // Obtener nombre del staff
-        $stmt = $pdo->prepare("SELECT nombre, apellido FROM usuario WHERE Id_usuario = ?");
-        $stmt->execute([$uid]);
-        $staff = $stmt->fetch(PDO::FETCH_ASSOC);
-        
-        if (!$staff) throw new Exception('Usuario no encontrado');
-        
-        $staffNombre = trim(($staff['apellido'] ?? '') . ', ' . ($staff['nombre'] ?? ''));
-        
-        // Verificar estado del turno
-        $stmt = $pdo->prepare("SELECT estado FROM turno WHERE Id_turno = ?");
-        $stmt->execute([$turnoId]);
-        $turno = $stmt->fetch(PDO::FETCH_ASSOC);
-        
-        if (!$turno) {
-            throw new Exception('Turno no encontrado');
-        }
-        
-        if ($turno['estado'] === 'rechazado') {
-            throw new Exception('Este turno ya fue rechazado');
-        }
-        
-        // Iniciar transacción
-        $pdo->beginTransaction();
-        
-        // Actualizar turno a RECHAZADO
-        $idStaff = $isSec ? $mySecId : $uid;
-        $stmt = $pdo->prepare("
-            UPDATE turno 
-            SET estado = 'rechazado',
-                fecha_confirmacion = NOW(),
-                Id_staff_confirma = ?,
-                motivo_rechazo = ?
-            WHERE Id_turno = ?
-        ");
-        $stmt->execute([$idStaff, $motivo, $turnoId]);
-        
-        // Enviar email de rechazo
-        $resultadoEmail = notificarTurnoRechazado($turnoId, $motivo, $staffNombre, $pdo);
-        
-        $pdo->commit();
-        
-        if ($resultadoEmail['ok']) {
-            json_out([
-                'ok' => true, 
-                'msg' => 'Turno rechazado y email enviado al paciente'
-            ]);
-        } else {
-            json_out([
-                'ok' => true, 
-                'msg' => 'Turno rechazado pero hubo un error al enviar el email: ' . ($resultadoEmail['error'] ?? 'desconocido')
-            ]);
-        }
-        
-    } catch (Throwable $e) {
-        if ($pdo->inTransaction()) $pdo->rollBack();
-        error_log("Error rechazando turno: " . $e->getMessage());
-        json_out(['ok' => false, 'error' => $e->getMessage()], 500);
-    }
-}
 // ======= VALIDACIÓN DE ACCESO PARA HTML =======
 [$uid,$isSec,$isMed,$myMedId,$mySecId] = must_staff($pdo);
 
@@ -1146,10 +1026,11 @@ $rolTexto = $isSec ? 'Secretaría' : 'Médico';
   <title>Panel Administrativo - Clínica</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="csrf-token" content="<?= htmlspecialchars($csrf) ?>">
+  
+  <!-- ✅ CSS EXTERNOS -->
   <link rel="stylesheet" href="../assets/css/admin.css">
+  <link rel="stylesheet" href="../assets/css/admin_additional.css">
   <link rel="stylesheet" href="../assets/css/theme_light.css">
-
-  <script src="../assets/js/theme_toggle.js"></script>
 </head>
 <body>
 <header class="hdr">
@@ -1170,12 +1051,12 @@ $rolTexto = $isSec ? 'Secretaría' : 'Médico';
 
 <main class="wrap">
   <div class="tabs">
-  <button class="tab active" data-tab="medicos">👨‍⚕️ Médicos</button>
-  <button class="tab" data-tab="secretarias">👩‍💼 Secretarias</button>
-  <button class="tab" data-tab="obras">🏥 Obras Sociales</button>
-  <button class="tab" data-tab="turnos-pendientes">⏳ Turnos Reservados</button>
-  <button class="tab" data-tab="turnos">📅 Gestión de Turnos</button>
-</div>
+    <button class="tab active" data-tab="medicos">👨‍⚕️ Médicos</button>
+    <button class="tab" data-tab="secretarias">👩‍💼 Secretarias</button>
+    <button class="tab" data-tab="obras">🏥 Obras Sociales</button>
+    <button class="tab" data-tab="turnos-pendientes">⏳ Turnos Reservados</button>
+    <button class="tab" data-tab="turnos">📅 Gestión de Turnos</button>
+  </div>
 
   <!-- ===== MÉDICOS ===== -->
   <section id="tab-medicos" class="card">
@@ -1288,70 +1169,69 @@ $rolTexto = $isSec ? 'Secretaría' : 'Médico';
     </div>
   </section>
 
+  <!-- ===== TURNOS PENDIENTES ===== -->
   <section id="tab-turnos-pendientes" class="card hidden">
-  <h2>⏳ Turnos Reservados - Pendientes de Confirmación</h2>
-  
-  <p style="color:var(--muted);margin-bottom:20px;padding:12px;background:rgba(251,146,60,0.1);border-left:3px solid var(--warn);border-radius:8px">
-    ℹ️ <strong>Estos turnos fueron solicitados por pacientes y esperan confirmación o rechazo por parte del staff.</strong>
-    <br>Una vez confirmados, se enviará un email automático al paciente con los detalles.
-  </p>
-  
-  <!-- Filtros -->
-  <div class="grid" style="display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin-bottom:16px">
-    <div class="field">
-      <label for="fEspPendientes">Filtrar por Especialidad</label>
-      <select id="fEspPendientes">
-        <option value="">Todas las especialidades</option>
-      </select>
+    <h2>⏳ Turnos Reservados - Pendientes de Confirmación</h2>
+    
+    <p style="color:var(--muted);margin-bottom:20px;padding:12px;background:rgba(251,146,60,0.1);border-left:3px solid var(--warn);border-radius:8px">
+      ℹ️ <strong>Estos turnos fueron solicitados por pacientes y esperan confirmación o rechazo por parte del staff.</strong>
+      <br>Una vez confirmados, se enviará un email automático al paciente con los detalles.
+    </p>
+    
+    <div class="grid" style="display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin-bottom:16px">
+      <div class="field">
+        <label for="fEspPendientes">Filtrar por Especialidad</label>
+        <select id="fEspPendientes">
+          <option value="">Todas las especialidades</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="fMedPendientes">Filtrar por Médico</label>
+        <select id="fMedPendientes" disabled>
+          <option value="">Elegí especialidad primero</option>
+        </select>
+      </div>
     </div>
-    <div class="field">
-      <label for="fMedPendientes">Filtrar por Médico</label>
-      <select id="fMedPendientes" disabled>
-        <option value="">Elegí especialidad primero</option>
-      </select>
-    </div>
-  </div>
 
-  <div class="grid" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:12px">
-    <div class="field">
-      <label for="fFromPendientes">Desde</label>
-      <input id="fFromPendientes" type="date">
+    <div class="grid" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:12px">
+      <div class="field">
+        <label for="fFromPendientes">Desde</label>
+        <input id="fFromPendientes" type="date">
+      </div>
+      <div class="field">
+        <label for="fToPendientes">Hasta</label>
+        <input id="fToPendientes" type="date">
+      </div>
     </div>
-    <div class="field">
-      <label for="fToPendientes">Hasta</label>
-      <input id="fToPendientes" type="date">
+
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+      <button id="btnRefreshPendientes" class="btn ghost">🔄 Actualizar</button>
+      <button id="btnClearFiltersPendientes" class="btn ghost">❌ Limpiar filtros</button>
+      <span id="msgPendientes" class="msg"></span>
     </div>
-  </div>
 
-  <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
-    <button id="btnRefreshPendientes" class="btn ghost">🔄 Actualizar</button>
-    <button id="btnClearFiltersPendientes" class="btn ghost">❌ Limpiar filtros</button>
-    <span id="msgPendientes" class="msg"></span>
-  </div>
-
-  <!-- Tabla de Turnos Pendientes -->
-  <div class="table-wrap">
-    <table id="tblTurnosPendientes">
-      <thead>
-        <tr>
-          <th>Fecha y Hora</th>
-          <th>Paciente</th>
-          <th>DNI</th>
-          <th>Médico</th>
-          <th>Especialidad</th>
-          <th>Obra Social</th>
-          <th style="width:200px">Acciones</th>
-        </tr>
-      </thead>
-      <tbody></tbody>
-    </table>
-    <div id="noPendientes" class="msg" style="padding:40px;text-align:center;display:none">
-      ✅ No hay turnos pendientes de confirmación
+    <div class="table-wrap">
+      <table id="tblTurnosPendientes">
+        <thead>
+          <tr>
+            <th>Fecha y Hora</th>
+            <th>Paciente</th>
+            <th>DNI</th>
+            <th>Médico</th>
+            <th>Especialidad</th>
+            <th>Obra Social</th>
+            <th style="width:200px">Acciones</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <div id="noPendientes" class="msg" style="padding:40px;text-align:center;display:none">
+        ✅ No hay turnos pendientes de confirmación
+      </div>
     </div>
-  </div>
-</section>
+  </section>
 
-  <!-- ===== TURNOS ===== -->
+  <!-- ===== GESTIÓN DE TURNOS ===== -->
   <section id="tab-turnos" class="card hidden">
     <h2>📅 Gestión de Turnos</h2>
     
@@ -1388,16 +1268,15 @@ $rolTexto = $isSec ? 'Secretaría' : 'Médico';
       <div class="grid" style="display:grid;grid-template-columns:1fr 1fr auto;gap:16px">
         <div class="field"><label for="newDate">Nueva fecha</label><input id="newDate" type="date"></div>
         <div class="field"><label for="newTime">Nuevo horario</label><select id="newTime"><option value="">Elegí fecha…</option></select></div>
-        <div style="display:flex;align-items:flex-end;gap:8px">
-        </div>
       </div>
     </div>
   </section>
 </main>
 
+<!-- MODALES -->
 <!-- Modal Crear Turno -->
-<div id="modalCreateTurno" class="modal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:1000;align-items:center;justify-content:center">
-  <div class="modal-content" style="background:#111827;border:1px solid #1f2937;border-radius:16px;padding:32px;max-width:600px;width:90%">
+<div id="modalCreateTurno" class="modal">
+  <div class="modal-content">
     <h2>➕ Crear Nuevo Turno</h2>
     <form id="formCreateTurno">
       <input type="hidden" id="turnoMedicoId">
@@ -1427,8 +1306,8 @@ $rolTexto = $isSec ? 'Secretaría' : 'Médico';
 </div>
 
 <!-- Modal Editar Médico -->
-<div id="modalEditMedico" class="modal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:1000;align-items:center;justify-content:center">
-  <div class="modal-content" style="background:#111827;border:1px solid #1f2937;border-radius:16px;padding:32px;max-width:700px;width:90%;max-height:90vh;overflow-y:auto">
+<div id="modalEditMedico" class="modal">
+  <div class="modal-content" style="max-width:700px;max-height:90vh;overflow-y:auto">
     <h2>✏️ Editar Médico</h2>
     <form id="formEditMedico">
       <input type="hidden" id="editMedId">
@@ -1475,8 +1354,8 @@ $rolTexto = $isSec ? 'Secretaría' : 'Médico';
 </div>
 
 <!-- Modal Editar Secretaria -->
-<div id="modalEditSecretaria" class="modal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:1000;align-items:center;justify-content:center">
-  <div class="modal-content" style="background:#111827;border:1px solid #1f2937;border-radius:16px;padding:32px;max-width:600px;width:90%">
+<div id="modalEditSecretaria" class="modal">
+  <div class="modal-content">
     <h2>✏️ Editar Secretaria</h2>
     <form id="formEditSecretaria">
       <input type="hidden" id="editSecId">
@@ -1494,603 +1373,16 @@ $rolTexto = $isSec ? 'Secretaría' : 'Médico';
   </div>
 </div>
 
-<style>
-.horario-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px;
-  background: #1a2332;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  margin-bottom: 8px;
-}
-.horario-info {
-  flex: 1;
-}
-.btn-remove-horario {
-  padding: 6px 12px;
-  background: #ef4444;
-  color: white;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 600;
-}
-.btn-remove-horario:hover {
-  background: #dc2626;
-}
-.paciente-item {
-  padding: 10px;
-  background: #0b1220;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  margin-bottom: 8px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-.paciente-item:hover {
-  background: #1a2332;
-  border-color: var(--primary);
-}
-.paciente-item.selected {
-  background: var(--primary);
-  color: #001219;
-  border-color: var(--primary);
-}
-.tab {
-  transition: all 0.3s;
-}
-.tab:hover {
-  background: rgba(34,211,238,0.1);
-  border-color: var(--primary);
-}
-.tab.active {
-  background: var(--primary);
-  color: #001219;
-  border-color: var(--primary);
-}
-</style>
-
-<script>
-// Sistema de gestión de horarios
-(function(){
-  const horariosCreate = [];
-  const horariosEdit = [];
-  
-  function formatHour12(time24) {
-    if (!time24) return '';
-    const [hours, minutes] = time24.split(':');
-    let h = parseInt(hours);
-    const ampm = h >= 12 ? 'PM' : 'AM';
-    h = h % 12 || 12;
-    return `${h}:${minutes} ${ampm}`;
-  }
-  
-  function horarioExists(list, dia, inicio, fin) {
-    return list.some(h => h.dia === dia && h.inicio === inicio && h.fin === fin);
-  }
-  
-  function horarioOverlaps(list, dia, inicioNuevo, finNuevo) {
-    return list.some(h => {
-      if (h.dia !== dia) return false;
-      return (inicioNuevo < h.fin && finNuevo > h.inicio);
-    });
-  }
-  
-  function renderHorarios(list, containerId) {
-    const container = document.getElementById(containerId);
-    if (!container) return;
-    
-    container.innerHTML = '';
-    if (list.length === 0) {
-      container.innerHTML = '<p style="color:var(--muted);font-size:13px;padding:8px">⚠️ No hay horarios agregados. Agregá al menos uno.</p>';
-      return;
-    }
-    
-    const diasOrden = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'];
-    const sortedList = [...list].sort((a, b) => {
-      const diaCompare = diasOrden.indexOf(a.dia) - diasOrden.indexOf(b.dia);
-      if (diaCompare !== 0) return diaCompare;
-      return a.inicio.localeCompare(b.inicio);
-    });
-    
-    sortedList.forEach((h) => {
-      const realIdx = list.indexOf(h);
-      const div = document.createElement('div');
-      div.className = 'horario-item';
-      
-      const horaInicio = formatHour12(h.inicio.substring(0,5));
-      const horaFin = formatHour12(h.fin.substring(0,5));
-      
-      div.innerHTML = `
-        <div class="horario-info">
-          <strong style="text-transform:capitalize;color:var(--primary);font-size:14px">${h.dia}</strong>
-          <br>
-          <span style="color:var(--text);font-size:13px">🕒 ${horaInicio} - ${horaFin}</span>
-        </div>
-        <button type="button" class="btn-remove-horario" data-idx="${realIdx}">🗑️ Eliminar</button>
-      `;
-      container.appendChild(div);
-    });
-    
-    container.querySelectorAll('.btn-remove-horario').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const idx = parseInt(btn.dataset.idx);
-        if (containerId === 'horariosListCreate') {
-          horariosCreate.splice(idx, 1);
-          renderHorarios(horariosCreate, 'horariosListCreate');
-          const msgEl = document.getElementById('msgCreateMed');
-          if (msgEl) {
-            msgEl.textContent = '✅ Horario eliminado';
-            msgEl.className = 'msg ok';
-          }
-        } else {
-          horariosEdit.splice(idx, 1);
-          renderHorarios(horariosEdit, 'horariosListEdit');
-          const msgEl = document.getElementById('msgMedicoModal');
-          if (msgEl) {
-            msgEl.textContent = '✅ Horario eliminado';
-            msgEl.className = 'msg ok';
-          }
-        }
-      });
-    });
-  }
-  
-  document.getElementById('btnAgregarHorario')?.addEventListener('click', () => {
-    const dia = document.getElementById('diaHorario').value;
-    const inicio = document.getElementById('horaInicio').value;
-    const fin = document.getElementById('horaFin').value;
-    const msgEl = document.getElementById('msgCreateMed');
-    
-    if (!inicio || !fin) {
-      alert('⚠️ Completá las horas de inicio y fin');
-      return;
-    }
-    
-    if (inicio >= fin) {
-      alert('⚠️ La hora de inicio debe ser menor que la de fin');
-      return;
-    }
-    
-    const inicioFull = inicio + ':00';
-    const finFull = fin + ':00';
-    
-    if (horarioExists(horariosCreate, dia, inicioFull, finFull)) {
-      alert('⚠️ Este horario ya fue agregado');
-      return;
-    }
-    
-    if (horarioOverlaps(horariosCreate, dia, inicioFull, finFull)) {
-      alert('⚠️ Este horario se solapa con uno existente');
-      return;
-    }
-    
-    horariosCreate.push({dia, inicio: inicioFull, fin: finFull});
-    renderHorarios(horariosCreate, 'horariosListCreate');
-    
-    if (msgEl) {
-      msgEl.textContent = `✅ Horario agregado`;
-      msgEl.className = 'msg ok';
-    }
-  });
-  
-  document.getElementById('btnAgregarHorarioEdit')?.addEventListener('click', () => {
-    const dia = document.getElementById('editDiaHorario').value;
-    const inicio = document.getElementById('editHoraInicio').value;
-    const fin = document.getElementById('editHoraFin').value;
-    const msgEl = document.getElementById('msgMedicoModal');
-    
-    if (!inicio || !fin) {
-      alert('⚠️ Completá las horas de inicio y fin');
-      return;
-    }
-    
-    if (inicio >= fin) {
-      alert('⚠️ La hora de inicio debe ser menor que la de fin');
-      return;
-    }
-    
-    const inicioFull = inicio + ':00';
-    const finFull = fin + ':00';
-    
-    if (horarioExists(horariosEdit, dia, inicioFull, finFull)) {
-      alert('⚠️ Este horario ya fue agregado');
-      return;
-    }
-    
-    if (horarioOverlaps(horariosEdit, dia, inicioFull, finFull)) {
-      alert('⚠️ Este horario se solapa con uno existente');
-      return;
-    }
-    
-    horariosEdit.push({dia, inicio: inicioFull, fin: finFull});
-    renderHorarios(horariosEdit, 'horariosListEdit');
-    
-    if (msgEl) {
-      msgEl.textContent = `✅ Horario agregado`;
-      msgEl.className = 'msg ok';
-    }
-  });
-  
-  document.getElementById('btnCrearMedico')?.addEventListener('click', async () => {
-    const form = document.getElementById('createMedicoForm');
-    const msgEl = document.getElementById('msgCreateMed');
-    
-    if (!form.checkValidity()) {
-      form.reportValidity();
-      return;
-    }
-    
-    if (horariosCreate.length === 0) {
-      msgEl.textContent = '⚠️ Debe agregar al menos un horario';
-      msgEl.className = 'msg err';
-      alert('⚠️ Debe agregar al menos un horario de atención');
-      return;
-    }
-    
-    msgEl.textContent = '⏳ Creando médico...';
-    msgEl.className = 'msg';
-    
-    const fd = new FormData(form);
-    fd.set('action', 'create_medico');
-    fd.set('csrf_token', document.querySelector('meta[name="csrf-token"]').content);
-    fd.set('horarios', JSON.stringify(horariosCreate));
-    
-    try {
-      const res = await fetch('admin.php', {method:'POST', body:fd});
-      const data = await res.json();
-      if (!data.ok) throw new Error(data.error || 'Error');
-      
-      msgEl.textContent = '✅ ' + (data.msg || 'Médico creado');
-      msgEl.className = 'msg ok';
-      
-      form.reset();
-      horariosCreate.length = 0;
-      renderHorarios(horariosCreate, 'horariosListCreate');
-      
-      setTimeout(() => window.location.reload(), 1500);
-    } catch(e) {
-      msgEl.textContent = '❌ ' + e.message;
-      msgEl.className = 'msg err';
-    }
-  });
-  
-  window.loadMedicoHorarios = function(horarios) {
-    horariosEdit.length = 0;
-    if (horarios && Array.isArray(horarios)) {
-      horarios.forEach(h => {
-        horariosEdit.push({
-          dia: h.Dia_semana || h.dia_semana,
-          inicio: h.Hora_inicio || h.hora_inicio,
-          fin: h.Hora_fin || h.hora_fin
-        });
-      });
-    }
-    renderHorarios(horariosEdit, 'horariosListEdit');
-  };
-  
-  document.getElementById('formEditMedico')?.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const msgEl = document.getElementById('msgMedicoModal');
-    
-    if (horariosEdit.length === 0) {
-      msgEl.textContent = '⚠️ Debe tener al menos un horario';
-      msgEl.className = 'msg err';
-      alert('⚠️ Debe tener al menos un horario de atención');
-      return;
-    }
-    
-    msgEl.textContent = '⏳ Actualizando...';
-    msgEl.className = 'msg';
-    
-    const fd = new FormData();
-    fd.append('action', 'update_medico');
-    fd.append('csrf_token', document.querySelector('meta[name="csrf-token"]').content);
-    fd.append('id_medico', document.getElementById('editMedId').value);
-    fd.append('nombre', document.getElementById('editMedNombre').value);
-    fd.append('apellido', document.getElementById('editMedApellido').value);
-    fd.append('email', document.getElementById('editMedEmail').value);
-    fd.append('legajo', document.getElementById('editMedLegajo').value);
-    fd.append('especialidad', document.getElementById('editMedEsp').value);
-    fd.append('horarios', JSON.stringify(horariosEdit));
-    
-    try {
-      const res = await fetch('admin.php', {method:'POST', body:fd});
-      const data = await res.json();
-      if (!data.ok) throw new Error(data.error || 'Error');
-      
-      msgEl.textContent = '✅ ' + (data.msg || 'Actualizado');
-      msgEl.className = 'msg ok';
-      
-      setTimeout(() => window.location.reload(), 1500);
-    } catch(e) {
-      msgEl.textContent = '❌ ' + e.message;
-      msgEl.className = 'msg err';
-    }
-  });
-  
-  renderHorarios(horariosCreate, 'horariosListCreate');
-  renderHorarios(horariosEdit, 'horariosListEdit');
-})();
-
-console.log('✅ Admin panel inicializado correctamente');
-</script>
+<!-- ✅ JAVASCRIPT EXTERNOS -->
+<script src="../assets/js/theme_toggle.js"></script>
 <script src="../assets/js/turnos_utils.js"></script>
 <script src="../assets/js/admin_validation.js"></script>
 <script src="../assets/js/admin_fixes.js"></script> 
 <script src="../assets/js/admin_turno_confirmation.js"></script>
 <script src="../assets/js/admin.js"></script>
-<script>
-// Sistema de gestión de horarios - VERSIÓN CORREGIDA
-(function(){
-  'use strict';
-  
-  const horariosCreate = [];
-  const horariosEdit = [];
-  
-  function formatHour12(time24) {
-    if (!time24) return '';
-    const [hours, minutes] = time24.split(':');
-    let h = parseInt(hours);
-    const ampm = h >= 12 ? 'PM' : 'AM';
-    h = h % 12 || 12;
-    return `${h}:${minutes} ${ampm}`;
-  }
-  
-  function horarioExists(list, dia, inicio, fin) {
-    return list.some(h => h.dia === dia && h.inicio === inicio && h.fin === fin);
-  }
-  
-  function horarioOverlaps(list, dia, inicioNuevo, finNuevo) {
-    return list.some(h => {
-      if (h.dia !== dia) return false;
-      return (inicioNuevo < h.fin && finNuevo > h.inicio);
-    });
-  }
-  
-  function renderHorarios(list, containerId) {
-    const container = document.getElementById(containerId);
-    if (!container) return;
-    
-    container.innerHTML = '';
-    if (list.length === 0) {
-      container.innerHTML = '<p style="color:var(--muted);font-size:13px;padding:8px">⚠️ No hay horarios agregados. Agregá al menos uno.</p>';
-      return;
-    }
-    
-    const diasOrden = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'];
-    const sortedList = [...list].sort((a, b) => {
-      const diaCompare = diasOrden.indexOf(a.dia) - diasOrden.indexOf(b.dia);
-      if (diaCompare !== 0) return diaCompare;
-      return a.inicio.localeCompare(b.inicio);
-    });
-    
-    sortedList.forEach((h) => {
-      const realIdx = list.indexOf(h);
-      const div = document.createElement('div');
-      div.className = 'horario-item';
-      
-      const horaInicio = formatHour12(h.inicio.substring(0,5));
-      const horaFin = formatHour12(h.fin.substring(0,5));
-      
-      div.innerHTML = `
-        <div class="horario-info">
-          <strong style="text-transform:capitalize;color:var(--primary);font-size:14px">${h.dia}</strong>
-          <br>
-          <span style="color:var(--text);font-size:13px">🕒 ${horaInicio} - ${horaFin}</span>
-        </div>
-        <button type="button" class="btn-remove-horario" data-idx="${realIdx}">🗑️ Eliminar</button>
-      `;
-      container.appendChild(div);
-    });
-    
-    container.querySelectorAll('.btn-remove-horario').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const idx = parseInt(btn.dataset.idx);
-        if (containerId === 'horariosListCreate') {
-          horariosCreate.splice(idx, 1);
-          renderHorarios(horariosCreate, 'horariosListCreate');
-          const msgEl = document.getElementById('msgCreateMed');
-          if (msgEl) {
-            msgEl.textContent = '✅ Horario eliminado';
-            msgEl.className = 'msg ok';
-          }
-        } else {
-          horariosEdit.splice(idx, 1);
-          renderHorarios(horariosEdit, 'horariosListEdit');
-          const msgEl = document.getElementById('msgMedicoModal');
-          if (msgEl) {
-            msgEl.textContent = '✅ Horario eliminado';
-            msgEl.className = 'msg ok';
-          }
-        }
-      });
-    });
-  }
-  
-  document.getElementById('btnAgregarHorario')?.addEventListener('click', () => {
-    const dia = document.getElementById('diaHorario').value;
-    const inicio = document.getElementById('horaInicio').value;
-    const fin = document.getElementById('horaFin').value;
-    const msgEl = document.getElementById('msgCreateMed');
-    
-    if (!inicio || !fin) {
-      alert('⚠️ Completá las horas de inicio y fin');
-      return;
-    }
-    
-    if (inicio >= fin) {
-      alert('⚠️ La hora de inicio debe ser menor que la de fin');
-      return;
-    }
-    
-    const inicioFull = inicio + ':00';
-    const finFull = fin + ':00';
-    
-    if (horarioExists(horariosCreate, dia, inicioFull, finFull)) {
-      alert('⚠️ Este horario ya fue agregado');
-      return;
-    }
-    
-    if (horarioOverlaps(horariosCreate, dia, inicioFull, finFull)) {
-      alert('⚠️ Este horario se solapa con uno existente');
-      return;
-    }
-    
-    horariosCreate.push({dia, inicio: inicioFull, fin: finFull});
-    renderHorarios(horariosCreate, 'horariosListCreate');
-    
-    if (msgEl) {
-      msgEl.textContent = `✅ Horario agregado`;
-      msgEl.className = 'msg ok';
-    }
-  });
-  
-  document.getElementById('btnAgregarHorarioEdit')?.addEventListener('click', () => {
-    const dia = document.getElementById('editDiaHorario').value;
-    const inicio = document.getElementById('editHoraInicio').value;
-    const fin = document.getElementById('editHoraFin').value;
-    const msgEl = document.getElementById('msgMedicoModal');
-    
-    if (!inicio || !fin) {
-      alert('⚠️ Completá las horas de inicio y fin');
-      return;
-    }
-    
-    if (inicio >= fin) {
-      alert('⚠️ La hora de inicio debe ser menor que la de fin');
-      return;
-    }
-    
-    const inicioFull = inicio + ':00';
-    const finFull = fin + ':00';
-    
-    if (horarioExists(horariosEdit, dia, inicioFull, finFull)) {
-      alert('⚠️ Este horario ya fue agregado');
-      return;
-    }
-    
-    if (horarioOverlaps(horariosEdit, dia, inicioFull, finFull)) {
-      alert('⚠️ Este horario se solapa con uno existente');
-      return;
-    }
-    
-    horariosEdit.push({dia, inicio: inicioFull, fin: finFull});
-    renderHorarios(horariosEdit, 'horariosListEdit');
-    
-    if (msgEl) {
-      msgEl.textContent = `✅ Horario agregado`;
-      msgEl.className = 'msg ok';
-    }
-  });
-  
-  document.getElementById('btnCrearMedico')?.addEventListener('click', async () => {
-    const form = document.getElementById('createMedicoForm');
-    const msgEl = document.getElementById('msgCreateMed');
-    
-    if (!form.checkValidity()) {
-      form.reportValidity();
-      return;
-    }
-    
-    if (horariosCreate.length === 0) {
-      msgEl.textContent = '⚠️ Debe agregar al menos un horario';
-      msgEl.className = 'msg err';
-      alert('⚠️ Debe agregar al menos un horario de atención');
-      return;
-    }
-    
-    msgEl.textContent = '⏳ Creando médico...';
-    msgEl.className = 'msg';
-    
-    const fd = new FormData(form);
-    fd.set('action', 'create_medico');
-    fd.set('csrf_token', document.querySelector('meta[name="csrf-token"]').content);
-    fd.set('horarios', JSON.stringify(horariosCreate));
-    
-    try {
-      const res = await fetch('admin.php', {method:'POST', body:fd});
-      const data = await res.json();
-      if (!data.ok) throw new Error(data.error || 'Error');
-      
-      msgEl.textContent = '✅ ' + (data.msg || 'Médico creado');
-      msgEl.className = 'msg ok';
-      
-      form.reset();
-      horariosCreate.length = 0;
-      renderHorarios(horariosCreate, 'horariosListCreate');
-      
-      setTimeout(() => window.location.reload(), 1500);
-    } catch(e) {
-      msgEl.textContent = '❌ ' + e.message;
-      msgEl.className = 'msg err';
-    }
-  });
-  
-  window.loadMedicoHorarios = function(horarios) {
-    horariosEdit.length = 0;
-    if (horarios && Array.isArray(horarios)) {
-      horarios.forEach(h => {
-        horariosEdit.push({
-          dia: h.Dia_semana || h.dia_semana,
-          inicio: h.Hora_inicio || h.hora_inicio,
-          fin: h.Hora_fin || h.hora_fin
-        });
-      });
-    }
-    renderHorarios(horariosEdit, 'horariosListEdit');
-  };
-  
-  document.getElementById('formEditMedico')?.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const msgEl = document.getElementById('msgMedicoModal');
-    
-    if (horariosEdit.length === 0) {
-      msgEl.textContent = '⚠️ Debe tener al menos un horario';
-      msgEl.className = 'msg err';
-      alert('⚠️ Debe tener al menos un horario de atención');
-      return;
-    }
-    
-    msgEl.textContent = '⏳ Actualizando...';
-    msgEl.className = 'msg';
-    
-    const fd = new FormData();
-    fd.append('action', 'update_medico');
-    fd.append('csrf_token', document.querySelector('meta[name="csrf-token"]').content);
-    fd.append('id_medico', document.getElementById('editMedId').value);
-    fd.append('nombre', document.getElementById('editMedNombre').value);
-    fd.append('apellido', document.getElementById('editMedApellido').value);
-    fd.append('email', document.getElementById('editMedEmail').value);
-    fd.append('legajo', document.getElementById('editMedLegajo').value);
-    fd.append('especialidad', document.getElementById('editMedEsp').value);
-    fd.append('horarios', JSON.stringify(horariosEdit));
-    
-    try {
-      const res = await fetch('admin.php', {method:'POST', body:fd});
-      const data = await res.json();
-      if (!data.ok) throw new Error(data.error || 'Error');
-      
-      msgEl.textContent = '✅ ' + (data.msg || 'Actualizado');
-      msgEl.className = 'msg ok';
-      
-      setTimeout(() => window.location.reload(), 1500);
-    } catch(e) {
-      msgEl.textContent = '❌ ' + e.message;
-      msgEl.className = 'msg err';
-    }
-  });
-  
-  // Inicializar vistas
-  renderHorarios(horariosCreate, 'horariosListCreate');
-  renderHorarios(horariosEdit, 'horariosListEdit');
-  
-  console.log('✅ Sistema de horarios inicializado');
-})();
+<script src="../assets/js/admin_horarios.js"></script>
 
+<script>
 console.log('✅ Admin panel cargado completamente');
 </script>
 </body>

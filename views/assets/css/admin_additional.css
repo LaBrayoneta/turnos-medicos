@@ -1,0 +1,98 @@
+/* views/assets/css/admin_additional.css */
+/* Estilos adicionales para el panel administrativo */
+
+/* ITEMS DE HORARIOS */
+.horario-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px;
+  background: #1a2332;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 8px;
+  transition: all 0.2s;
+}
+
+.horario-item:hover {
+  border-color: var(--primary);
+  background: rgba(34, 211, 238, 0.05);
+}
+
+.horario-info {
+  flex: 1;
+}
+
+/* BOTÓN ELIMINAR HORARIO */
+.btn-remove-horario {
+  padding: 6px 12px;
+  background: #ef4444;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  transition: all 0.3s;
+}
+
+.btn-remove-horario:hover {
+  background: #dc2626;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
+}
+
+.btn-remove-horario:active {
+  transform: translateY(0);
+}
+
+/* ITEMS DE PACIENTES */
+.paciente-item {
+  padding: 10px;
+  background: #0b1220;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.paciente-item:hover {
+  background: #1a2332;
+  border-color: var(--primary);
+  transform: translateX(2px);
+}
+
+.paciente-item.selected {
+  background: var(--primary);
+  color: #001219;
+  border-color: var(--primary);
+  font-weight: 600;
+}
+
+/* TABS (refuerzo de estilos) */
+.tab {
+  transition: all 0.3s;
+}
+
+.tab:hover {
+  background: rgba(34, 211, 238, 0.1);
+  border-color: var(--primary);
+}
+
+.tab.active {
+  background: var(--primary);
+  color: #001219;
+  border-color: var(--primary);
+}
+
+/* LISTA DE HORARIOS VACÍA */
+.horarios-empty {
+  color: var(--muted);
+  font-size: 13px;
+  padding: 8px;
+  text-align: center;
+  background: rgba(239, 68, 68, 0.05);
+  border: 1px dashed var(--err);
+  border-radius: 8px;
+}
