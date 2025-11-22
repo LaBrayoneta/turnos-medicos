@@ -46,7 +46,6 @@ CREATE TABLE `diagnostico` (
 
 LOCK TABLES `diagnostico` WRITE;
 /*!40000 ALTER TABLE `diagnostico` DISABLE KEYS */;
-INSERT INTO `diagnostico` VALUES (1,1,3,'tiene cancer.','siente dolor en los testiculos y cuando tiene relaciones sexuales no eyacula.','hacer ejercicio y dejar de consumir esteroides.','2025-11-15 04:09:04');
 /*!40000 ALTER TABLE `diagnostico` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -113,7 +112,7 @@ CREATE TABLE `historial_clinico` (
 
 LOCK TABLES `historial_clinico` WRITE;
 /*!40000 ALTER TABLE `historial_clinico` DISABLE KEYS */;
-INSERT INTO `historial_clinico` VALUES (1,1,1,3,'consulta','DIAGNÓSTICO: tiene cancer.\n\nSÍNTOMAS: siente dolor en los testiculos y cuando tiene relaciones sexuales no eyacula.\n\nOBSERVACIONES: hacer ejercicio y dejar de consumir esteroides.\n\nRECETA:\nLosartán 50mg - 1 comp. por día\nIbuprofeno 400mg - 1 comp. cada 10min','2025-11-15 04:09:04');
+INSERT INTO `historial_clinico` VALUES (1,1,NULL,3,'consulta','DIAGNÓSTICO: tiene cancer.\n\nSÍNTOMAS: siente dolor en los testiculos y cuando tiene relaciones sexuales no eyacula.\n\nOBSERVACIONES: hacer ejercicio y dejar de consumir esteroides.\n\nRECETA:\nLosartán 50mg - 1 comp. por día\nIbuprofeno 400mg - 1 comp. cada 10min','2025-11-15 04:09:04');
 /*!40000 ALTER TABLE `historial_clinico` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -268,7 +267,7 @@ CREATE TABLE `paciente` (
   KEY `idx_activo` (`activo`),
   CONSTRAINT `paciente_ibfk_1` FOREIGN KEY (`Id_usuario`) REFERENCES `usuario` (`Id_usuario`) ON DELETE CASCADE,
   CONSTRAINT `paciente_ibfk_2` FOREIGN KEY (`Id_obra_social`) REFERENCES `obra_social` (`Id_obra_social`) ON DELETE SET NULL
-) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -277,7 +276,7 @@ CREATE TABLE `paciente` (
 
 LOCK TABLES `paciente` WRITE;
 /*!40000 ALTER TABLE `paciente` DISABLE KEYS */;
-INSERT INTO `paciente` VALUES (1,1,7,'123214','435453',1,'2025-11-14 03:59:46'),(2,10,7,NULL,'5322',1,'2025-11-16 14:47:03');
+INSERT INTO `paciente` VALUES (1,1,7,'123214','435453',1,'2025-11-14 03:59:46'),(2,10,7,NULL,'5322',1,'2025-11-16 14:47:03'),(3,11,1,NULL,'343578',1,'2025-11-20 20:09:31');
 /*!40000 ALTER TABLE `paciente` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -320,7 +319,6 @@ CREATE TABLE `receta` (
 
 LOCK TABLES `receta` WRITE;
 /*!40000 ALTER TABLE `receta` DISABLE KEYS */;
-INSERT INTO `receta` VALUES (1,1,1,3,1,'Losartán 50mg - 1 comp. por día\nIbuprofeno 400mg - 1 comp. cada 10min','Ver indicaciones en cada medicamento','hasta que muera','2025-11-15 04:09:04','2025-12-15');
 /*!40000 ALTER TABLE `receta` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -396,7 +394,7 @@ CREATE TABLE `turno` (
   CONSTRAINT `turno_ibfk_4` FOREIGN KEY (`Id_medico_atencion`) REFERENCES `medico` (`Id_medico`) ON DELETE SET NULL,
   CONSTRAINT `chk_turno_estado_nuevo` CHECK ((`estado` in (_utf8mb4'pendiente_confirmacion',_utf8mb4'confirmado',_utf8mb4'rechazado',_utf8mb4'reservado',_utf8mb4'cancelado',_utf8mb4'completado',_utf8mb4'ausente'))),
   CONSTRAINT `turno_chk_estados_confirmacion` CHECK ((`estado` in (_utf8mb4'pendiente_confirmacion',_utf8mb4'confirmado',_utf8mb4'rechazado',_utf8mb4'reservado',_utf8mb4'cancelado',_utf8mb4'completado',_utf8mb4'ausente')))
-) ENGINE=InnoDB AUTO_INCREMENT=8 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=14 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -405,7 +403,7 @@ CREATE TABLE `turno` (
 
 LOCK TABLES `turno` WRITE;
 /*!40000 ALTER TABLE `turno` DISABLE KEYS */;
-INSERT INTO `turno` VALUES (1,1,3,NULL,'2025-11-20 14:30:00','reservado',NULL,NULL,NULL,0,1,'2025-11-15 04:09:04',3,NULL,'2025-11-14 04:05:48','2025-11-15 21:50:06'),(7,2,5,NULL,'2025-11-19 18:30:00','reservado',NULL,NULL,NULL,0,0,NULL,NULL,NULL,'2025-11-16 14:47:21','2025-11-16 14:47:21');
+INSERT INTO `turno` VALUES (13,1,5,NULL,'2025-11-26 19:00:00','confirmado','2025-11-20 19:08:22',5,NULL,0,0,NULL,NULL,NULL,'2025-11-20 19:08:22','2025-11-20 19:08:22');
 /*!40000 ALTER TABLE `turno` ENABLE KEYS */;
 UNLOCK TABLES;
 /*!50003 SET @saved_cs_client      = @@character_set_client */ ;
@@ -626,7 +624,7 @@ CREATE TABLE `usuario` (
   KEY `idx_email` (`email`),
   KEY `idx_rol` (`rol`),
   CONSTRAINT `usuario_chk_1` CHECK ((`Rol` in (_utf8mb4'paciente',_utf8mb4'medico',_utf8mb4'secretaria')))
-) ENGINE=InnoDB AUTO_INCREMENT=11 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=12 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -635,7 +633,7 @@ CREATE TABLE `usuario` (
 
 LOCK TABLES `usuario` WRITE;
 /*!40000 ALTER TABLE `usuario` DISABLE KEYS */;
-INSERT INTO `usuario` VALUES (1,'Braian','Perez','48654321','braian@gmail.com','$2y$12$UapWp8WCTnSoT6qKOGeEIe8HWSe9KCfsrQNOjxF42IlwG8NfAeDpe','paciente',0,NULL,NULL,'2025-11-15 21:49:48','2025-11-14 03:59:46'),(2,'María','González','30456789','secretaria@clinica.com','$2y$12$YWxgGHt5QX6Ieyh44Oy5hORtA43NdifAKPecM/8zayORasXUzsb36','secretaria',0,NULL,NULL,'2025-11-15 03:43:13','2025-11-14 04:02:15'),(5,'Braian','Salgado','54326478','braian1@gmail.com','$2y$10$TRtyLViiklElHyoigLJJqezSpH1yIVTrYM0d.F3/6bGgUnXzgw6iu','medico',0,NULL,NULL,'2025-11-16 15:08:33','2025-11-14 04:56:17'),(9,'Xavi','Hernandez','53432129','Xavi@gmail.com','$2y$10$lUtNCoWfXkhSZLh2go.PpuJWOmzZNnRYGkyoFeCe79zSKagUG2qdu','medico',0,NULL,NULL,'2025-11-16 14:49:34','2025-11-15 22:00:25'),(10,'Uriel','Marquez','95876432','braiansalgado2436@gmail.com','$2y$12$m0OMHWtCv38DAz3F/OFoBuuO3oF4wIgs4oeDQlZF8dGij4yDSUOXm','paciente',0,NULL,NULL,'2025-11-17 14:02:41','2025-11-16 14:47:03');
+INSERT INTO `usuario` VALUES (1,'Braian','Perez','48654321','braian@gmail.com','$2y$12$UapWp8WCTnSoT6qKOGeEIe8HWSe9KCfsrQNOjxF42IlwG8NfAeDpe','paciente',0,NULL,NULL,'2025-11-15 21:49:48','2025-11-14 03:59:46'),(2,'María','González','30456789','secretaria@clinica.com','$2y$12$YWxgGHt5QX6Ieyh44Oy5hORtA43NdifAKPecM/8zayORasXUzsb36','secretaria',0,NULL,NULL,'2025-11-15 03:43:13','2025-11-14 04:02:15'),(5,'Braian','Salgado','54326478','braian1@gmail.com','$2y$10$TRtyLViiklElHyoigLJJqezSpH1yIVTrYM0d.F3/6bGgUnXzgw6iu','medico',0,NULL,NULL,'2025-11-20 11:48:04','2025-11-14 04:56:17'),(9,'Xavi','Hernandez','53432129','Xavi@gmail.com','$2y$10$lUtNCoWfXkhSZLh2go.PpuJWOmzZNnRYGkyoFeCe79zSKagUG2qdu','medico',0,NULL,NULL,'2025-11-20 23:33:02','2025-11-15 22:00:25'),(10,'Uriel','Marquez','95876432','braiansalgado2436@gmail.com','$2y$12$m0OMHWtCv38DAz3F/OFoBuuO3oF4wIgs4oeDQlZF8dGij4yDSUOXm','paciente',0,NULL,NULL,'2025-11-20 19:47:28','2025-11-16 14:47:03'),(11,'Cristina','Fernandez','54674324','cris@gmail.com','$2y$12$C3pa3AP.yucALuliWFMtiOSaYAA/Dxn5E0xQGePX/T36Hc6zj9VKS','paciente',0,NULL,NULL,'2025-11-20 23:32:30','2025-11-20 20:09:31');
 /*!40000 ALTER TABLE `usuario` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -652,4 +650,4 @@ UNLOCK TABLES;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2025-11-17 11:11:07
+-- Dump completed on 2025-11-20 21:34:35

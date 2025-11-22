@@ -57,24 +57,29 @@ $medicoId = require_medico($pdo);
 error_log("Medico API - Action: $action, Medico ID: $medicoId");
 
 // ========== ESTADÍSTICAS ==========
+// BUSCAR ESTA SECCIÓN EN medico_api.php (aprox línea 50) Y REEMPLAZARLA COMPLETA
+
 if ($action === 'stats') {
     try {
         $hoy = date('Y-m-d');
+        $en7dias = date('Y-m-d', strtotime('+7 days'));
         
-        // Turnos de hoy
+        // Turnos de hoy (CONFIRMADOS)
         $st = $pdo->prepare("
             SELECT COUNT(*) FROM turno 
-            WHERE Id_medico = ? AND DATE(fecha) = ? 
-            AND (estado IS NULL OR estado <> 'cancelado')
+            WHERE Id_medico = ? 
+            AND DATE(fecha) = ? 
+            AND estado = 'confirmado'
         ");
         $st->execute([$medicoId, $hoy]);
         $turnosHoy = (int)$st->fetchColumn();
         
-        // Pendientes de atención hoy
+        // Pendientes: hoy + futuros sin atender (confirmados)
         $st = $pdo->prepare("
             SELECT COUNT(*) FROM turno 
-            WHERE Id_medico = ? AND DATE(fecha) = ? 
-            AND (estado IS NULL OR estado = 'reservado')
+            WHERE Id_medico = ? 
+            AND DATE(fecha) >= ? 
+            AND estado = 'confirmado'
             AND atendido = 0
         ");
         $st->execute([$medicoId, $hoy]);
@@ -83,25 +88,24 @@ if ($action === 'stats') {
         // Atendidos hoy
         $st = $pdo->prepare("
             SELECT COUNT(*) FROM turno 
-            WHERE Id_medico = ? AND DATE(fecha) = ? AND atendido = 1
+            WHERE Id_medico = ? 
+            AND DATE(fecha) = ? 
+            AND atendido = 1
         ");
         $st->execute([$medicoId, $hoy]);
         $atendidos = (int)$st->fetchColumn();
         
-        // Esta semana
-        $inicioSemana = date('Y-m-d', strtotime('monday this week'));
-        $finSemana = date('Y-m-d', strtotime('sunday this week'));
-        
+        // Próximos 7 días (CONFIRMADOS, desde hoy)
         $st = $pdo->prepare("
             SELECT COUNT(*) FROM turno 
             WHERE Id_medico = ? 
             AND DATE(fecha) BETWEEN ? AND ?
-            AND (estado IS NULL OR estado <> 'cancelado')
+            AND estado = 'confirmado'
         ");
-        $st->execute([$medicoId, $inicioSemana, $finSemana]);
-        $semana = (int)$st->fetchColumn();
+        $st->execute([$medicoId, $hoy, $en7dias]);
+        $proximos7 = (int)$st->fetchColumn();
         
-        error_log("Stats loaded: Hoy=$turnosHoy, Pendientes=$pendientes, Atendidos=$atendidos, Semana=$semana");
+        error_log("Stats medico $medicoId: hoy=$turnosHoy, pend=$pendientes, atend=$atendidos, prox7=$proximos7");
         
         json_out([
             'ok' => true,
@@ -109,7 +113,7 @@ if ($action === 'stats') {
                 'hoy' => $turnosHoy,
                 'pendientes' => $pendientes,
                 'atendidos' => $atendidos,
-                'semana' => $semana
+                'semana' => $proximos7
             ]
         ]);
         
@@ -119,32 +123,32 @@ if ($action === 'stats') {
     }
 }
 
-// ========== TURNOS DE HOY ==========
+// ========== TURNOS DE HOY  ==========
 if ($action === 'turnos_hoy') {
     try {
         $hoy = date('Y-m-d');
         
         $st = $pdo->prepare("
-  SELECT 
-    t.Id_turno as id,
-    t.fecha,
-    t.atendido,
-    t.fecha_atencion,
-    p.Id_paciente as paciente_id,
-    u.nombre as paciente_nombre,
-    u.apellido as paciente_apellido,
-    u.dni as paciente_dni,
-    os.nombre as obra_social,
-    p.libreta_sanitaria as libreta
-  FROM turno t
-  JOIN paciente p ON p.Id_paciente = t.Id_paciente
-  JOIN usuario u ON u.Id_usuario = p.Id_usuario
-  LEFT JOIN obra_social os ON os.Id_obra_social = p.Id_obra_social
-  WHERE t.Id_medico = ?
-      AND DATE(t.fecha) = ?
-      AND t.estado = 'confirmado'
-  ORDER BY t.fecha ASC
-");
+            SELECT 
+                t.Id_turno as id,
+                t.fecha,
+                t.atendido,
+                t.fecha_atencion,
+                p.Id_paciente as paciente_id,
+                u.nombre as paciente_nombre,
+                u.apellido as paciente_apellido,
+                u.dni as paciente_dni,
+                os.nombre as obra_social,
+                p.libreta_sanitaria as libreta
+            FROM turno t
+            JOIN paciente p ON p.Id_paciente = t.Id_paciente
+            JOIN usuario u ON u.Id_usuario = p.Id_usuario
+            LEFT JOIN obra_social os ON os.Id_obra_social = p.Id_obra_social
+            WHERE t.Id_medico = ?
+                AND DATE(t.fecha) = ?
+                AND t.estado = 'confirmado'
+            ORDER BY t.fecha ASC
+        ");
         $st->execute([$medicoId, $hoy]);
         
         $turnos = [];
@@ -162,7 +166,7 @@ if ($action === 'turnos_hoy') {
             ];
         }
         
-        error_log("Turnos hoy loaded: " . count($turnos));
+        error_log("Turnos hoy (confirmados) loaded: " . count($turnos));
         json_out(['ok' => true, 'turnos' => $turnos]);
         
     } catch (Throwable $e) {
@@ -187,26 +191,26 @@ if ($action === 'turnos_proximos') {
         }
         
         $st = $pdo->prepare("
-  SELECT 
-    t.Id_turno as id,
-    t.fecha,
-    t.atendido,
-    t.fecha_atencion,
-    p.Id_paciente as paciente_id,
-    u.nombre as paciente_nombre,
-    u.apellido as paciente_apellido,
-    u.dni as paciente_dni,
-    os.nombre as obra_social,
-    p.libreta_sanitaria as libreta
-  FROM turno t
-  JOIN paciente p ON p.Id_paciente = t.Id_paciente
-  JOIN usuario u ON u.Id_usuario = p.Id_usuario
-  LEFT JOIN obra_social os ON os.Id_obra_social = p.Id_obra_social
-  WHERE t.Id_medico = ?
-      AND $whereClause
-      AND t.estado = 'confirmado'
-  ORDER BY t.fecha ASC
-");
+            SELECT 
+                t.Id_turno as id,
+                t.fecha,
+                t.atendido,
+                t.fecha_atencion,
+                p.Id_paciente as paciente_id,
+                u.nombre as paciente_nombre,
+                u.apellido as paciente_apellido,
+                u.dni as paciente_dni,
+                os.nombre as obra_social,
+                p.libreta_sanitaria as libreta
+            FROM turno t
+            JOIN paciente p ON p.Id_paciente = t.Id_paciente
+            JOIN usuario u ON u.Id_usuario = p.Id_usuario
+            LEFT JOIN obra_social os ON os.Id_obra_social = p.Id_obra_social
+            WHERE t.Id_medico = ?
+                AND $whereClause
+                AND t.estado = 'confirmado'
+            ORDER BY t.fecha ASC
+        ");
         $st->execute($params);
         
         $turnos = [];
@@ -224,7 +228,7 @@ if ($action === 'turnos_proximos') {
             ];
         }
         
-        error_log("Turnos proximos loaded: " . count($turnos));
+        error_log("Turnos proximos (confirmados) loaded: " . count($turnos));
         json_out(['ok' => true, 'turnos' => $turnos]);
         
     } catch (Throwable $e) {

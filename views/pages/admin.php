@@ -1,7 +1,5 @@
 <?php
-// views/pages/admin.php - VERSIÓN CON JS Y CSS EXTERNOS
-// ✅ NO debe haber NADA antes de este <?php
-
+// views/pages/admin.php -
 error_reporting(E_ALL);
 ini_set('display_errors', '0');
 ini_set('log_errors', '1');
@@ -553,6 +551,7 @@ if ($isApiRequest) {
     json_out(['ok'=>true,'items'=>$items]);
   }
 
+     //AGENDA 
   if ($action === 'agenda') {
     $medId = (int)($_GET['medico_id'] ?? 0);
     if ($medId <= 0) json_out(['ok'=>false,'error'=>'Médico inválido'],400);
@@ -560,7 +559,7 @@ if ($isApiRequest) {
     $from = $_GET['from'] ?? '';
     $to = $_GET['to'] ?? '';
 
-    $where = "t.Id_medico=?";
+    $where = "t.Id_medico=? AND t.estado NOT IN ('rechazado', 'cancelado')";
     $params = [$medId];
 
     if ($from && preg_match('/^\d{4}-\d{2}-\d{2}$/', $from)) {
@@ -573,7 +572,7 @@ if ($isApiRequest) {
     }
 
     $stmt = $pdo->prepare("
-      SELECT t.Id_turno, t.fecha, t.estado, t.Id_medico,
+      SELECT t.Id_turno, t.fecha, t.estado, t.Id_medico, t.atendido,
              up.apellido AS PApellido, up.nombre AS PNombre
       FROM turno t
       LEFT JOIN paciente p ON p.Id_paciente=t.Id_paciente
@@ -590,7 +589,8 @@ if ($isApiRequest) {
         'Id_medico' => (int)($r['Id_medico'] ?? 0),
         'fecha' => $r['fecha'],
         'fecha_fmt' => date('d/m/Y H:i', strtotime($r['fecha'])),
-        'estado' => strtolower($r['estado'] ?? 'cancelado'),
+        'estado' => strtolower($r['estado'] ?? 'pendiente'),
+        'atendido' => (bool)$r['atendido'],
         'paciente' => trim(($r['PApellido'] ?? '') . ', ' . ($r['PNombre'] ?? ''))
       ];
     }
@@ -865,38 +865,34 @@ if ($isApiRequest) {
   }
 
   // ========== CONFIRMAR TURNO ==========
+  // BUSCAR ESTA SECCIÓN EN admin.php Y REEMPLAZARLA COMPLETA
+  
   if ($action === 'confirmar_turno') {
     ensure_csrf();
-    require_once __DIR__ . '/../../config/email.php';
     
     try {
       $turnoId = (int)($_POST['turno_id'] ?? 0);
       if ($turnoId <= 0) throw new Exception('Turno inválido');
       
+      // Obtener datos del staff
       $stmt = $pdo->prepare("SELECT nombre, apellido FROM usuario WHERE Id_usuario = ?");
       $stmt->execute([$uid]);
       $staff = $stmt->fetch(PDO::FETCH_ASSOC);
-      
       if (!$staff) throw new Exception('Usuario no encontrado');
-      
       $staffNombre = trim(($staff['apellido'] ?? '') . ', ' . ($staff['nombre'] ?? ''));
       
+      // Verificar estado actual
       $stmt = $pdo->prepare("SELECT estado FROM turno WHERE Id_turno = ?");
       $stmt->execute([$turnoId]);
       $turno = $stmt->fetch(PDO::FETCH_ASSOC);
       
-      if (!$turno) {
-        throw new Exception('Turno no encontrado');
+      if (!$turno) throw new Exception('Turno no encontrado');
+      if ($turno['estado'] === 'confirmado') throw new Exception('Ya está confirmado');
+      if ($turno['estado'] === 'rechazado' || $turno['estado'] === 'cancelado') {
+        throw new Exception('Turno rechazado/cancelado');
       }
       
-      if ($turno['estado'] === 'confirmado') {
-        throw new Exception('Este turno ya está confirmado');
-      }
-      
-      if ($turno['estado'] === 'rechazado') {
-        throw new Exception('Este turno fue rechazado previamente');
-      }
-      
+      // Actualizar turno
       $pdo->beginTransaction();
       
       $idStaff = $isSec ? $mySecId : $uid;
@@ -910,25 +906,28 @@ if ($isApiRequest) {
       ");
       $stmt->execute([$idStaff, $turnoId]);
       
-      $resultadoEmail = notificarTurnoConfirmado($turnoId, $staffNombre, $pdo);
-      
       $pdo->commit();
       
-      if ($resultadoEmail['ok']) {
-        json_out([
-          'ok' => true, 
-          'msg' => 'Turno confirmado y email enviado al paciente'
-        ]);
-      } else {
-        json_out([
-          'ok' => true, 
-          'msg' => 'Turno confirmado pero hubo un error al enviar el email: ' . ($resultadoEmail['error'] ?? 'desconocido')
-        ]);
+      // Intentar enviar email (no bloquea)
+      $emailMsg = '';
+      try {
+        $emailFile = __DIR__ . '/../../config/email.php';
+        if (file_exists($emailFile)) {
+          require_once $emailFile;
+          if (function_exists('notificarTurnoConfirmado')) {
+            $res = notificarTurnoConfirmado($turnoId, $staffNombre, $pdo);
+            $emailMsg = $res['ok'] ? ' - Email enviado' : '';
+          }
+        }
+      } catch (Throwable $e) {
+        error_log("Email error: " . $e->getMessage());
       }
+      
+      json_out(['ok' => true, 'msg' => 'Turno confirmado' . $emailMsg]);
       
     } catch (Throwable $e) {
       if ($pdo->inTransaction()) $pdo->rollBack();
-      error_log("Error confirmando turno: " . $e->getMessage());
+      error_log("Error confirmar: " . $e->getMessage());
       json_out(['ok' => false, 'error' => $e->getMessage()], 500);
     }
   }
@@ -936,37 +935,31 @@ if ($isApiRequest) {
   // ========== RECHAZAR TURNO ==========
   if ($action === 'rechazar_turno') {
     ensure_csrf();
-    require_once __DIR__ . '/../../config/email.php';
     
     try {
       $turnoId = (int)($_POST['turno_id'] ?? 0);
       $motivo = trim($_POST['motivo'] ?? '');
       
       if ($turnoId <= 0) throw new Exception('Turno inválido');
-      if (empty($motivo)) throw new Exception('Debe especificar el motivo del rechazo');
-      if (strlen($motivo) < 10) throw new Exception('El motivo debe tener al menos 10 caracteres');
-      if (strlen($motivo) > 500) throw new Exception('El motivo es demasiado largo (máximo 500 caracteres)');
+      if (empty($motivo)) throw new Exception('Motivo requerido');
+      if (strlen($motivo) < 10) throw new Exception('Motivo muy corto (mín 10 caracteres)');
       
+      // Obtener datos del staff
       $stmt = $pdo->prepare("SELECT nombre, apellido FROM usuario WHERE Id_usuario = ?");
       $stmt->execute([$uid]);
       $staff = $stmt->fetch(PDO::FETCH_ASSOC);
-      
       if (!$staff) throw new Exception('Usuario no encontrado');
-      
       $staffNombre = trim(($staff['apellido'] ?? '') . ', ' . ($staff['nombre'] ?? ''));
       
+      // Verificar estado
       $stmt = $pdo->prepare("SELECT estado FROM turno WHERE Id_turno = ?");
       $stmt->execute([$turnoId]);
       $turno = $stmt->fetch(PDO::FETCH_ASSOC);
       
-      if (!$turno) {
-        throw new Exception('Turno no encontrado');
-      }
+      if (!$turno) throw new Exception('Turno no encontrado');
+      if ($turno['estado'] === 'rechazado') throw new Exception('Ya está rechazado');
       
-      if ($turno['estado'] === 'rechazado') {
-        throw new Exception('Este turno ya fue rechazado');
-      }
-      
+      // Actualizar turno
       $pdo->beginTransaction();
       
       $idStaff = $isSec ? $mySecId : $uid;
@@ -980,29 +973,31 @@ if ($isApiRequest) {
       ");
       $stmt->execute([$idStaff, $motivo, $turnoId]);
       
-      $resultadoEmail = notificarTurnoRechazado($turnoId, $motivo, $staffNombre, $pdo);
-      
       $pdo->commit();
       
-      if ($resultadoEmail['ok']) {
-        json_out([
-          'ok' => true, 
-          'msg' => 'Turno rechazado y email enviado al paciente'
-        ]);
-      } else {
-        json_out([
-          'ok' => true, 
-          'msg' => 'Turno rechazado pero hubo un error al enviar el email: ' . ($resultadoEmail['error'] ?? 'desconocido')
-        ]);
+      // Intentar enviar email (no bloquea)
+      $emailMsg = '';
+      try {
+        $emailFile = __DIR__ . '/../../config/email.php';
+        if (file_exists($emailFile)) {
+          require_once $emailFile;
+          if (function_exists('notificarTurnoRechazado')) {
+            $res = notificarTurnoRechazado($turnoId, $motivo, $staffNombre, $pdo);
+            $emailMsg = $res['ok'] ? ' - Email enviado' : '';
+          }
+        }
+      } catch (Throwable $e) {
+        error_log("Email error: " . $e->getMessage());
       }
+      
+      json_out(['ok' => true, 'msg' => 'Turno rechazado' . $emailMsg]);
       
     } catch (Throwable $e) {
       if ($pdo->inTransaction()) $pdo->rollBack();
-      error_log("Error rechazando turno: " . $e->getMessage());
+      error_log("Error rechazar: " . $e->getMessage());
       json_out(['ok' => false, 'error' => $e->getMessage()], 500);
     }
   }
-
   // Si llegamos aquí, la acción no fue reconocida
   json_out(['ok'=>false,'error'=>'Acción no soportada: ' . $action],400);
 }

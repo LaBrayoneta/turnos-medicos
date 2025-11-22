@@ -75,6 +75,7 @@ try {
 
     <main class="wrap">
         <!-- Estadísticas -->
+        <!-- BUSCAR ESTA SECCIÓN EN medico_panel.php Y REEMPLAZARLA -->
         <div class="stats-grid">
             <div class="stat-box">
                 <div class="stat-number" id="statHoy">0</div>
@@ -86,14 +87,13 @@ try {
             </div>
             <div class="stat-box">
                 <div class="stat-number" id="statAtendidos">0</div>
-                <div class="stat-label">✅ Atendidos</div>
+                <div class="stat-label">✅ Atendidos hoy</div>
             </div>
             <div class="stat-box">
                 <div class="stat-number" id="statSemana">0</div>
-                <div class="stat-label">📆 Esta semana</div>
+                <div class="stat-label">📆 Próximos 7 días</div>
             </div>
         </div>
-
         <!-- Tabs -->
         <div class="tabs">
             <button class="tab active" data-tab="hoy">📅 Turnos de Hoy</button>

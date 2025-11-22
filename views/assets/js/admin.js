@@ -528,6 +528,7 @@
     }
   }
 
+  // ========== RENDERIZAR AGENDA (CORREGIDO) ==========
   function renderAgenda(rows){
     if(!tblAgendaBody) return;
     tblAgendaBody.innerHTML='';
@@ -541,54 +542,84 @@
     if(noData) noData.style.display = 'none';
     
     rows.forEach(r=>{
-      const confirmado = (r.estado === 'confirmado');
-      const rechazado = (r.estado === 'rechazado');
-      const cancelado = (r.estado === 'cancelado');
+      const estado = (r.estado || 'pendiente').toLowerCase();
+      const confirmado = (estado === 'confirmado');
+      const pendiente = (estado === 'pendiente_confirmacion' || estado === 'pendiente');
+      const atendido = r.atendido || false;
       
       const tr = document.createElement('tr');
       
       let badgeClass = 'warn';
-      let estadoTexto = r.estado || 'pendiente';
+      let estadoTexto = estado;
       let estadoIcono = '⏳';
       
       if (confirmado) {
         badgeClass = 'ok';
         estadoTexto = 'confirmado';
         estadoIcono = '✅';
-      } else if (rechazado) {
-        badgeClass = 'err';
-        estadoTexto = 'rechazado';
-        estadoIcono = '❌';
-      } else if (cancelado) {
-        badgeClass = 'err';
-        estadoTexto = 'cancelado';
-        estadoIcono = '🚫';
+      } else if (pendiente) {
+        badgeClass = 'warn';
+        estadoTexto = 'pendiente';
+        estadoIcono = '⏳';
       }
       
-      // ✅ SIN BOTONES DE CONFIRMAR/RECHAZAR
-      // Solo: Cancelar, Reprogramar, Eliminar
-      tr.innerHTML = `
-  <td>
-    <div style="font-weight:600">${esc(r.fecha_fmt||'')}</div>
-  </td>
-  <td>${esc(r.paciente||'')}</td>
-  <td><span class="badge ${badgeClass}">${estadoIcono} ${esc(estadoTexto)}</span></td>
-  <td class="row-actions">
-    ${confirmado ? `
-      <button class="btn ghost btn-sm btn-cancel" data-id="${r.Id_turno}">❌ Cancelar</button>
-      <button class="btn ghost btn-sm btn-reprog" data-id="${r.Id_turno}">🔄 Reprogramar</button>
-    ` : ''}
-    <button class="btn ghost btn-sm btn-delete" data-id="${r.Id_turno}">🗑️ Eliminar</button>
-  </td>`;
+      if (atendido) {
+        badgeClass = 'ok';
+        estadoTexto = 'atendido';
+        estadoIcono = '✔️';
+      }
       
-      if (rechazado || cancelado) tr.style.opacity = '0.6';
+      // Botones según estado
+      let botonesHTML = '';
+      
+      if (atendido) {
+        // Turno ya atendido - solo ver/eliminar
+        botonesHTML = `
+          <span class="badge ok">✔️ Atendido</span>
+          <button class="btn ghost btn-sm btn-delete" data-id="${r.Id_turno}">🗑️</button>
+        `;
+      } else if (confirmado) {
+        // Turno confirmado - puede cancelar, reprogramar o eliminar
+        botonesHTML = `
+          <button class="btn ghost btn-sm btn-cancel" data-id="${r.Id_turno}">❌ Cancelar</button>
+          <button class="btn ghost btn-sm btn-reprog" data-id="${r.Id_turno}">🔄 Reprogramar</button>
+          <button class="btn ghost btn-sm btn-delete" data-id="${r.Id_turno}">🗑️</button>
+        `;
+      } else if (pendiente) {
+        // Turno pendiente - puede confirmar, rechazar o eliminar
+        botonesHTML = `
+          <button class="btn primary btn-sm btn-confirm" data-id="${r.Id_turno}">✅ Confirmar</button>
+          <button class="btn danger btn-sm btn-reject" data-id="${r.Id_turno}">❌ Rechazar</button>
+          <button class="btn ghost btn-sm btn-delete" data-id="${r.Id_turno}">🗑️</button>
+        `;
+      } else {
+        // Otro estado - solo eliminar
+        botonesHTML = `
+          <button class="btn ghost btn-sm btn-delete" data-id="${r.Id_turno}">🗑️ Eliminar</button>
+        `;
+      }
+      
+      tr.innerHTML = `
+        <td>
+          <div style="font-weight:600">${esc(r.fecha_fmt||'')}</div>
+        </td>
+        <td>${esc(r.paciente||'')}</td>
+        <td><span class="badge ${badgeClass}">${estadoIcono} ${esc(estadoTexto)}</span></td>
+        <td class="row-actions">${botonesHTML}</td>
+      `;
       
       tblAgendaBody.appendChild(tr);
     });
 
-    // Event listeners (SIN confirmar/rechazar)
+    // Event listeners
     $$('.btn-cancel').forEach(b=>b.addEventListener('click', ()=> cancelTurno(b.dataset.id)));
     $$('.btn-delete').forEach(b=>b.addEventListener('click', ()=> deleteTurno(b.dataset.id)));
+    $$('.btn-confirm').forEach(b=>b.addEventListener('click', ()=> {
+      if(window.confirmarTurno) window.confirmarTurno(b.dataset.id);
+    }));
+    $$('.btn-reject').forEach(b=>b.addEventListener('click', ()=> {
+      if(window.rechazarTurno) window.rechazarTurno(b.dataset.id);
+    }));
     $$('.btn-reprog').forEach(b=>{
       b.addEventListener('click', ()=> {
         selectedTurnoId = b.dataset.id;

@@ -1,48 +1,88 @@
 // views/assets/js/admin_turno_confirmation.js
-// Sistema de confirmación/rechazo de turnos con envío de emails
+// Sistema de confirmación/rechazo de turnos -
 
 (function() {
   'use strict';
 
   const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
 
-  // ========== VERIFICAR TURNO DUPLICADO ==========
-  window.checkPacienteTurnoExistente = async function(pacienteId, medicoId) {
+  // ========== FUNCIÓN PARA RECARGAR TURNOS PENDIENTES ==========
+  async function recargarTurnosPendientes() {
+    const tbody = document.querySelector('#tblTurnosPendientes tbody');
+    const noData = document.getElementById('noPendientes');
+    const msgEl = document.getElementById('msgPendientes');
+    
+    if (!tbody) return;
+    
     try {
-      const url = `admin.php?fetch=check_turno_existente&paciente_id=${pacienteId}&medico_id=${medicoId}`;
+      const espId = document.getElementById('fEspPendientes')?.value || '';
+      const medId = document.getElementById('fMedPendientes')?.value || '';
+      const from = document.getElementById('fFromPendientes')?.value || '';
+      const to = document.getElementById('fToPendientes')?.value || '';
       
-      console.log('🔍 Verificando turnos duplicados...');
+      let url = 'admin.php?fetch=turnos_pendientes';
+      if (espId) url += `&especialidad_id=${espId}`;
+      if (medId) url += `&medico_id=${medId}`;
+      if (from) url += `&from=${from}`;
+      if (to) url += `&to=${to}`;
       
-      const res = await fetch(url, {
-        headers: { 'Accept': 'application/json' }
-      });
-
+      const res = await fetch(url, { headers: { 'Accept': 'application/json' }});
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
       
-      if (data.ok && data.tiene_turno) {
-        console.log('⚠️ Turno duplicado encontrado:', data.turno);
-        return data.turno;
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || 'Error');
+      
+      tbody.innerHTML = '';
+      
+      if (!data.items || data.items.length === 0) {
+        if (noData) noData.style.display = 'block';
+        return;
       }
-
-      console.log('✅ No hay turnos duplicados');
-      return null;
-
+      
+      if (noData) noData.style.display = 'none';
+      
+      data.items.forEach(t => {
+        const tr = document.createElement('tr');
+        tr.style.background = 'rgba(251,146,60,0.05)';
+        
+        tr.innerHTML = `
+          <td><div style="font-weight:600;color:var(--primary)">${t.fecha_fmt}</div></td>
+          <td>${t.paciente}</td>
+          <td>${t.paciente_dni}</td>
+          <td>${t.medico}</td>
+          <td>${t.especialidad}</td>
+          <td>${t.obra_social}</td>
+          <td class="row-actions">
+            <button class="btn primary btn-sm btn-confirmar" data-id="${t.Id_turno}">✅ Confirmar</button>
+            <button class="btn danger btn-sm btn-rechazar" data-id="${t.Id_turno}">❌ Rechazar</button>
+          </td>
+        `;
+        
+        tbody.appendChild(tr);
+      });
+      
+      tbody.querySelectorAll('.btn-confirmar').forEach(btn => {
+        btn.addEventListener('click', () => confirmarTurno(btn.dataset.id));
+      });
+      
+      tbody.querySelectorAll('.btn-rechazar').forEach(btn => {
+        btn.addEventListener('click', () => rechazarTurno(btn.dataset.id));
+      });
+      
+      console.log('✅ Lista actualizada:', data.items.length, 'turnos');
+      
     } catch (e) {
-      console.error('Error verificando turno:', e);
-      return null;
+      console.error('Error recargando:', e);
     }
-  };
+  }
 
   // ========== CONFIRMAR TURNO ==========
-  window.confirmarTurno = async function(turnoId) {
-    if (!confirm('✅ ¿CONFIRMAR ESTE TURNO?\n\n• Se enviará un email de confirmación al paciente\n• El turno quedará confirmado en el sistema\n\n¿Deseas continuar?')) {
-      return;
-    }
+  async function confirmarTurno(turnoId) {
+    if (!confirm('✅ ¿CONFIRMAR ESTE TURNO?')) return;
     
-    const msgEl = document.getElementById('msgTurns');
+    const msgEl = document.getElementById('msgPendientes');
     if (msgEl) {
-      msgEl.textContent = '⏳ Confirmando turno y enviando email...';
+      msgEl.textContent = '⏳ Confirmando...';
       msgEl.className = 'msg';
     }
     
@@ -58,69 +98,46 @@
         headers: { 'Accept': 'application/json' }
       });
       
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
+      if (!res.ok) throw new Error(`Error (${res.status})`);
       
-      if (!data.ok) throw new Error(data.error || 'Error al confirmar');
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || 'Error');
       
       if (msgEl) {
-        msgEl.textContent = '✅ ' + (data.msg || 'Turno confirmado y email enviado');
+        msgEl.textContent = '✅ ' + (data.msg || 'Turno confirmado');
         msgEl.className = 'msg ok';
       }
       
-      // Recargar agenda después de 1.5 segundos
-      setTimeout(() => {
-        const btnRefresh = document.getElementById('btnRefresh');
-        if (btnRefresh) btnRefresh.click();
-      }, 1500);
+      // RECARGAR LISTA
+      setTimeout(recargarTurnosPendientes, 500);
       
     } catch (e) {
-      console.error('Error confirmando turno:', e);
+      console.error('Error:', e);
       if (msgEl) {
-        msgEl.textContent = '❌ Error: ' + e.message;
+        msgEl.textContent = '❌ ' + e.message;
         msgEl.className = 'msg err';
       }
-      alert('❌ Error al confirmar el turno:\n\n' + e.message);
+      alert('❌ ' + e.message);
     }
-  };
+  }
 
   // ========== RECHAZAR TURNO ==========
-  window.rechazarTurno = async function(turnoId) {
-    const motivo = prompt(
-      '❌ RECHAZAR TURNO\n\n' +
-      'Por favor, indica el motivo del rechazo.\n' +
-      'Este mensaje se enviará al paciente por email.\n\n' +
-      'Ejemplos:\n' +
-      '• El médico no está disponible en ese horario\n' +
-      '• Necesitamos reagendar por urgencia médica\n' +
-      '• El turno fue solicitado fuera de horario\n\n' +
-      '(Mínimo 10 caracteres, máximo 500):'
-    );
+  async function rechazarTurno(turnoId) {
+    const motivo = prompt('❌ RECHAZAR TURNO\n\nIndica el motivo (mínimo 10 caracteres):');
     
-    if (!motivo) {
-      console.log('Rechazo cancelado por el usuario');
-      return;
-    }
+    if (!motivo) return;
     
     const motivoTrim = motivo.trim();
-    
     if (motivoTrim.length < 10) {
-      alert('❌ ERROR\n\nEl motivo debe tener al menos 10 caracteres para que el paciente entienda la razón del rechazo.');
+      alert('❌ El motivo debe tener al menos 10 caracteres');
       return;
     }
     
-    if (motivoTrim.length > 500) {
-      alert('❌ ERROR\n\nEl motivo es demasiado largo (máximo 500 caracteres).\n\nActual: ' + motivoTrim.length + ' caracteres');
-      return;
-    }
+    if (!confirm(`⚠️ ¿RECHAZAR?\n\nMotivo: "${motivoTrim}"`)) return;
     
-    if (!confirm(`⚠️ CONFIRMAR RECHAZO\n\nMotivo que se enviará al paciente:\n"${motivoTrim}"\n\n¿Deseas continuar?`)) {
-      return;
-    }
-    
-    const msgEl = document.getElementById('msgTurns');
+    const msgEl = document.getElementById('msgPendientes');
     if (msgEl) {
-      msgEl.textContent = '⏳ Rechazando turno y enviando email...';
+      msgEl.textContent = '⏳ Rechazando...';
       msgEl.className = 'msg';
     }
     
@@ -137,31 +154,57 @@
         headers: { 'Accept': 'application/json' }
       });
       
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
+      if (!res.ok) throw new Error(`Error (${res.status})`);
       
-      if (!data.ok) throw new Error(data.error || 'Error al rechazar');
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || 'Error');
       
       if (msgEl) {
-        msgEl.textContent = '✅ ' + (data.msg || 'Turno rechazado y email enviado');
+        msgEl.textContent = '✅ ' + (data.msg || 'Turno rechazado');
         msgEl.className = 'msg ok';
       }
       
-      // Recargar agenda después de 1.5 segundos
-      setTimeout(() => {
-        const btnRefresh = document.getElementById('btnRefresh');
-        if (btnRefresh) btnRefresh.click();
-      }, 1500);
+      // RECARGAR LISTA
+      setTimeout(recargarTurnosPendientes, 500);
       
     } catch (e) {
-      console.error('Error rechazando turno:', e);
+      console.error('Error:', e);
       if (msgEl) {
-        msgEl.textContent = '❌ Error: ' + e.message;
+        msgEl.textContent = '❌ ' + e.message;
         msgEl.className = 'msg err';
       }
-      alert('❌ Error al rechazar el turno:\n\n' + e.message);
+      alert('❌ ' + e.message);
+    }
+  }
+
+  // ========== VERIFICAR TURNO DUPLICADO ==========
+  window.checkPacienteTurnoExistente = async function(pacienteId, medicoId) {
+    try {
+      const url = `admin.php?fetch=check_turno_existente&paciente_id=${pacienteId}&medico_id=${medicoId}`;
+      const res = await fetch(url, { headers: { 'Accept': 'application/json' }});
+      if (!res.ok) return null;
+      const data = await res.json();
+      return (data.ok && data.tiene_turno) ? data.turno : null;
+    } catch (e) {
+      return null;
     }
   };
 
-  console.log('✅ Sistema de confirmación/rechazo de turnos cargado');
+  // ========== EXPORTAR FUNCIONES GLOBALES ==========
+  window.confirmarTurno = confirmarTurno;
+  window.rechazarTurno = rechazarTurno;
+  window.recargarTurnosPendientes = recargarTurnosPendientes;
+
+  // ========== INICIALIZAR ==========
+  document.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      if (tab.dataset.tab === 'turnos-pendientes') {
+        setTimeout(recargarTurnosPendientes, 100);
+      }
+    });
+  });
+
+  document.getElementById('btnRefreshPendientes')?.addEventListener('click', recargarTurnosPendientes);
+
+  console.log('✅ admin_turno_confirmation.js cargado');
 })();
