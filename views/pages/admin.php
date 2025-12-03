@@ -673,7 +673,7 @@ if ($isApiRequest) {
     json_out(['ok'=>true,'items'=>$items]);
   }
 
-  if ($action === 'create_turno') {
+ if ($action === 'create_turno') {
     ensure_csrf();
     try {
       $medId = (int)($_POST['medico_id'] ?? 0);
@@ -688,6 +688,7 @@ if ($isApiRequest) {
 
       $fechaHora = "$date $time:00";
 
+      // Verificar duplicados
       $chkExisting = $pdo->prepare("
         SELECT COUNT(*) FROM turno 
         WHERE Id_paciente = ? 
@@ -701,6 +702,7 @@ if ($isApiRequest) {
         throw new Exception('Este paciente ya tiene un turno activo con este médico');
       }
 
+      // Verificar horario
       $check = $pdo->prepare("
         SELECT 1 FROM turno 
         WHERE fecha=? AND Id_medico=? AND estado IN ('pendiente_confirmacion', 'confirmado')
@@ -709,14 +711,31 @@ if ($isApiRequest) {
       $check->execute([$fechaHora, $medId]);
       if ($check->fetch()) throw new Exception('Ese horario ya está ocupado');
 
+      // ✅ INSERTAR TURNO
       $stmt = $pdo->prepare("
         INSERT INTO turno (fecha, estado, Id_paciente, Id_medico, Id_secretaria, fecha_confirmacion, Id_staff_confirma) 
         VALUES (?, 'confirmado', ?, ?, ?, NOW(), ?)
       ");
       $stmt->execute([$fechaHora, $pacId, $medId, $mySecId, $uid]);
 
-      json_out(['ok'=>true,'msg'=>'Turno creado y confirmado automáticamente']);
+      $turnoId = $pdo->lastInsertId();
+      
+      // ✅ LOG DETALLADO para debugging
+      error_log("✅ TURNO CREADO: ID=$turnoId, Médico=$medId, Paciente=$pacId, Fecha=$fechaHora, Estado=confirmado");
+
+      json_out([
+        'ok'=>true,
+        'msg'=>'Turno creado y confirmado automáticamente',
+        'turno_id' => $turnoId,
+        'debug' => [
+          'medico_id' => $medId,
+          'paciente_id' => $pacId,
+          'fecha_hora' => $fechaHora,
+          'estado' => 'confirmado'
+        ]
+      ]);
     } catch (Throwable $e) {
+      error_log("❌ Error create_turno: " . $e->getMessage());
       json_out(['ok'=>false,'error'=>$e->getMessage()],500);
     }
   }

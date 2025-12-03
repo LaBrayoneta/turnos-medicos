@@ -57,14 +57,15 @@ $medicoId = require_medico($pdo);
 error_log("Medico API - Action: $action, Medico ID: $medicoId");
 
 // ========== ESTADÍSTICAS ==========
-// BUSCAR ESTA SECCIÓN EN medico_api.php (aprox línea 50) Y REEMPLAZARLA COMPLETA
+
+// ========== ESTADÍSTICAS (REEMPLAZAR EN medico_api.php aprox línea 50) ==========
 
 if ($action === 'stats') {
     try {
         $hoy = date('Y-m-d');
         $en7dias = date('Y-m-d', strtotime('+7 days'));
         
-        // Turnos de hoy (CONFIRMADOS)
+        // ✅ Turnos de HOY confirmados
         $st = $pdo->prepare("
             SELECT COUNT(*) FROM turno 
             WHERE Id_medico = ? 
@@ -74,7 +75,7 @@ if ($action === 'stats') {
         $st->execute([$medicoId, $hoy]);
         $turnosHoy = (int)$st->fetchColumn();
         
-        // Pendientes: hoy + futuros sin atender (confirmados)
+        // ✅ Pendientes = confirmados sin atender (hoy + futuros)
         $st = $pdo->prepare("
             SELECT COUNT(*) FROM turno 
             WHERE Id_medico = ? 
@@ -85,7 +86,7 @@ if ($action === 'stats') {
         $st->execute([$medicoId, $hoy]);
         $pendientes = (int)$st->fetchColumn();
         
-        // Atendidos hoy
+        // Atendidos HOY
         $st = $pdo->prepare("
             SELECT COUNT(*) FROM turno 
             WHERE Id_medico = ? 
@@ -95,7 +96,7 @@ if ($action === 'stats') {
         $st->execute([$medicoId, $hoy]);
         $atendidos = (int)$st->fetchColumn();
         
-        // Próximos 7 días (CONFIRMADOS, desde hoy)
+        // ✅ Próximos 7 días confirmados (desde hoy inclusive)
         $st = $pdo->prepare("
             SELECT COUNT(*) FROM turno 
             WHERE Id_medico = ? 
@@ -105,7 +106,7 @@ if ($action === 'stats') {
         $st->execute([$medicoId, $hoy, $en7dias]);
         $proximos7 = (int)$st->fetchColumn();
         
-        error_log("Stats medico $medicoId: hoy=$turnosHoy, pend=$pendientes, atend=$atendidos, prox7=$proximos7");
+        error_log("✅ Stats: hoy=$turnosHoy, pend=$pendientes, atend=$atendidos, prox7=$proximos7");
         
         json_out([
             'ok' => true,
@@ -118,7 +119,7 @@ if ($action === 'stats') {
         ]);
         
     } catch (Throwable $e) {
-        error_log("Error in stats: " . $e->getMessage());
+        error_log("❌ Error stats: " . $e->getMessage());
         json_out(['ok' => false, 'error' => $e->getMessage()], 500);
     }
 }

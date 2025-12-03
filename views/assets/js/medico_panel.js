@@ -548,6 +548,47 @@
             container.appendChild(div);
         });
     }
+// Sistema de verificación temporal
+window.debugTurnos = async function() {
+    const medicoId = parseInt(document.body.dataset.medicoId);
+    console.log('🔍 Verificando turnos del médico:', medicoId);
+    
+    try {
+        // Verificar en base de datos directamente
+        const res = await fetch(`${API_URL}?action=turnos_hoy`);
+        const data = await res.json();
+        
+        console.log('📦 Respuesta del servidor:', data);
+        
+        if (data.ok) {
+            console.log(`✅ ${data.turnos.length} turno(s) encontrado(s)`);
+            
+            data.turnos.forEach((t, i) => {
+                console.log(`\n📋 Turno ${i + 1}:`);
+                console.log('  - ID:', t.id);
+                console.log('  - Fecha:', t.fecha);
+                console.log('  - Paciente:', t.paciente_nombre);
+                console.log('  - Atendido:', t.atendido);
+                console.log('  - Estado:', t.estado || 'N/A');
+            });
+        } else {
+            console.error('❌ Error del servidor:', data.error);
+        }
+        
+        // Verificar stats
+        const statsRes = await fetch(`${API_URL}?action=stats`);
+        const statsData = await statsRes.json();
+        
+        console.log('\n📊 Estadísticas actuales:', statsData.stats);
+        
+    } catch (e) {
+        console.error('❌ Error en debug:', e);
+    }
+};
+
+// Ejecutar automáticamente al cargar
+console.log('💡 Usa window.debugTurnos() para verificar sincronización');
+setTimeout(() => window.debugTurnos(), 2000); // Auto-check a los 2 segundos
 
     // Escape HTML
     function escapeHtml(text) {
