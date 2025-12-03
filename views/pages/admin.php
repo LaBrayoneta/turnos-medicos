@@ -744,16 +744,77 @@ if ($isApiRequest) {
     ensure_csrf();
     try {
       $turnoId = (int)($_POST['turno_id'] ?? 0);
+      $motivo = trim($_POST['motivo_cancelacion'] ?? 'Cancelado por el staff');
+      
       if ($turnoId <= 0) throw new Exception('Turno inválido');
 
-      $stmt = $pdo->prepare("UPDATE turno SET estado='cancelado' WHERE Id_turno=?");
+      // Obtener datos del turno para email
+      $stmt = $pdo->prepare("
+        SELECT 
+          t.fecha,
+          p.Id_paciente,
+          u.email as paciente_email,
+          CONCAT(u.apellido, ', ', u.nombre) as paciente_nombre,
+          CONCAT(um.apellido, ', ', um.nombre) as medico_nombre,
+          e.nombre as especialidad
+        FROM turno t
+        JOIN paciente p ON p.Id_paciente = t.Id_paciente
+        JOIN usuario u ON u.Id_usuario = p.Id_usuario
+        JOIN medico m ON m.Id_medico = t.Id_medico
+        JOIN usuario um ON um.Id_usuario = m.Id_usuario
+        LEFT JOIN especialidad e ON e.Id_Especialidad = m.Id_Especialidad
+        WHERE t.Id_turno = ?
+      ");
       $stmt->execute([$turnoId]);
+      $turnoData = $stmt->fetch(PDO::FETCH_ASSOC);
 
-      json_out(['ok'=>true,'msg'=>'Turno cancelado']);
+      if (!$turnoData) throw new Exception('Turno no encontrado');
+
+      // Obtener datos del staff
+      $stmt = $pdo->prepare("SELECT nombre, apellido FROM usuario WHERE Id_usuario = ?");
+      $stmt->execute([$uid]);
+      $staff = $stmt->fetch(PDO::FETCH_ASSOC);
+      $staffNombre = $staff ? trim(($staff['apellido'] ?? '') . ', ' . ($staff['nombre'] ?? '')) : 'Staff';
+
+      // Actualizar turno
+      $stmt = $pdo->prepare("UPDATE turno SET estado='cancelado', motivo_rechazo=? WHERE Id_turno=?");
+      $stmt->execute([$motivo, $turnoId]);
+
+      // ✅ ENVIAR EMAIL DE CANCELACIÓN
+      try {
+        $emailFile = __DIR__ . '/../../config/email.php';
+        if (file_exists($emailFile)) {
+          require_once $emailFile;
+          
+          $fechaObj = new DateTime($turnoData['fecha']);
+          
+          $datosEmail = [
+            'nombrePaciente' => $turnoData['paciente_nombre'],
+            'fecha' => $fechaObj->format('d/m/Y'),
+            'hora' => $fechaObj->format('H:i'),
+            'nombreMedico' => $turnoData['medico_nombre'],
+            'especialidad' => $turnoData['especialidad'] ?? 'Sin especialidad',
+            'motivo' => $motivo,
+            'nombreStaff' => $staffNombre
+          ];
+          
+          $html = emailTurnoCancelado($datosEmail);
+          
+          enviarEmail(
+            $turnoData['paciente_email'],
+            $turnoData['paciente_nombre'],
+            '❌ Turno Cancelado - Clínica Vida Plena',
+            $html
+          );
+        }
+      } catch (Throwable $e) {
+        error_log("Error enviando email de cancelación: " . $e->getMessage());
+      }
+
+      json_out(['ok'=>true,'msg'=>'Turno cancelado - Email enviado al paciente']);
     } catch (Throwable $e) {
       json_out(['ok'=>false,'error'=>$e->getMessage()],500);
     }
-  }
 
   if ($action === 'delete_turno') {
     ensure_csrf();
@@ -770,7 +831,7 @@ if ($isApiRequest) {
     }
   }
 
-  if ($action === 'reschedule_turno') {
+ if ($action === 'reschedule_turno') {
     ensure_csrf();
     try {
       $turnoId = (int)($_POST['turno_id'] ?? 0);
@@ -785,6 +846,7 @@ if ($isApiRequest) {
 
       $fechaHora = "$date $time:00";
 
+      // Verificar disponibilidad
       $check = $pdo->prepare("
         SELECT 1 FROM turno 
         WHERE fecha=? AND Id_medico=? AND (estado IS NULL OR estado <> 'cancelado') AND Id_turno<>?
@@ -793,6 +855,35 @@ if ($isApiRequest) {
       $check->execute([$fechaHora, $medId, $turnoId]);
       if ($check->fetch()) throw new Exception('Ese horario ya está ocupado');
 
+      // Obtener datos del turno para email
+      $stmt = $pdo->prepare("
+        SELECT 
+          t.fecha as fecha_anterior,
+          p.Id_paciente,
+          u.email as paciente_email,
+          CONCAT(u.apellido, ', ', u.nombre) as paciente_nombre,
+          CONCAT(um.apellido, ', ', um.nombre) as medico_nombre,
+          e.nombre as especialidad
+        FROM turno t
+        JOIN paciente p ON p.Id_paciente = t.Id_paciente
+        JOIN usuario u ON u.Id_usuario = p.Id_usuario
+        JOIN medico m ON m.Id_medico = t.Id_medico
+        JOIN usuario um ON um.Id_usuario = m.Id_usuario
+        LEFT JOIN especialidad e ON e.Id_Especialidad = m.Id_Especialidad
+        WHERE t.Id_turno = ?
+      ");
+      $stmt->execute([$turnoId]);
+      $turnoData = $stmt->fetch(PDO::FETCH_ASSOC);
+
+      if (!$turnoData) throw new Exception('Turno no encontrado');
+
+      // Obtener datos del staff
+      $stmt = $pdo->prepare("SELECT nombre, apellido FROM usuario WHERE Id_usuario = ?");
+      $stmt->execute([$uid]);
+      $staff = $stmt->fetch(PDO::FETCH_ASSOC);
+      $staffNombre = $staff ? trim(($staff['apellido'] ?? '') . ', ' . ($staff['nombre'] ?? '')) : 'Staff';
+
+      // Actualizar turno
       $stmt = $pdo->prepare("
         UPDATE turno 
         SET fecha=?, Id_medico=?, estado='confirmado' 
@@ -800,7 +891,39 @@ if ($isApiRequest) {
       ");
       $stmt->execute([$fechaHora, $medId, $turnoId]);
 
-      json_out(['ok'=>true,'msg'=>'Turno reprogramado exitosamente']);
+      // ✅ ENVIAR EMAIL DE REPROGRAMACIÓN
+      try {
+        $emailFile = __DIR__ . '/../../config/email.php';
+        if (file_exists($emailFile)) {
+          require_once $emailFile;
+          
+          // Formatear fechas
+          $fechaAnteriorObj = new DateTime($turnoData['fecha_anterior']);
+          $fechaNuevaObj = new DateTime($fechaHora);
+          
+          $datosEmail = [
+            'nombrePaciente' => $turnoData['paciente_nombre'],
+            'fecha_anterior' => $fechaAnteriorObj->format('d/m/Y H:i'),
+            'fecha_nueva' => $fechaNuevaObj->format('d/m/Y H:i'),
+            'nombreMedico' => $turnoData['medico_nombre'],
+            'especialidad' => $turnoData['especialidad'] ?? 'Sin especialidad',
+            'nombreStaff' => $staffNombre
+          ];
+          
+          $html = emailTurnoReprogramado($datosEmail);
+          
+          enviarEmail(
+            $turnoData['paciente_email'],
+            $turnoData['paciente_nombre'],
+            '🔄 Turno Reprogramado - Clínica Vida Plena',
+            $html
+          );
+        }
+      } catch (Throwable $e) {
+        error_log("Error enviando email de reprogramación: " . $e->getMessage());
+      }
+
+      json_out(['ok'=>true,'msg'=>'Turno reprogramado - Email enviado al paciente']);
     } catch (Throwable $e) {
       json_out(['ok'=>false,'error'=>$e->getMessage()],500);
     }

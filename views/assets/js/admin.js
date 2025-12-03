@@ -1,5 +1,52 @@
 // admin.js - Panel Administrativo (VERSIÓN COMPLETAMENTE CORREGIDA)
 // ✅ Soluciona el problema de congelamiento de pantalla
+// Función para obtener nombre del día
+function getDayNameES(dateStr) {
+  const dias = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];
+  const date = new Date(dateStr + 'T00:00:00');
+  return dias[date.getDay()];
+}
+
+// ✅ MODIFICAR LA SECCIÓN DE CAMBIO DE FECHA (turnoDate change event)
+// BUSCAR ESTA PARTE en admin.js y AGREGAR la validación:
+
+turnoDate?.addEventListener('change', async ()=>{
+    const turnoTimeSelect = document.getElementById('turnoTime');
+    const medicoIdInput = document.getElementById('turnoMedicoId');
+    
+    if (!turnoTimeSelect) return;
+    
+    if (turnoDate.value) {
+      const validation = Utils.isValidTurnoDate(turnoDate.value);
+      if (!validation.valid) {
+        setMsg(msgModal, '❌ ' + validation.error, false);
+        turnoDate.value = '';
+        return;
+      }
+      
+      // ✅ NUEVA VALIDACIÓN: Verificar que sea día laboral del médico
+      const medicoId = medicoIdInput?.value;
+      if (medicoId && window.currentMedicoDiasDisponibles) {
+        const diaSemana = getDayNameES(turnoDate.value);
+        const diasDisponibles = window.currentMedicoDiasDisponibles;
+        
+        if (!diasDisponibles.includes(diaSemana)) {
+          const diasCapitalizados = diasDisponibles.map(d => 
+            d.charAt(0).toUpperCase() + d.slice(1)
+          ).join(', ');
+          
+          alert(`⚠️ EL MÉDICO NO ATIENDE LOS ${diaSemana.toUpperCase()}S\n\nDías disponibles: ${diasCapitalizados}`);
+          turnoDate.value = '';
+          turnoTimeSelect.innerHTML = '<option value="">Elegí un día válido...</option>';
+          return;
+        }
+      }
+    }
+    
+    turnoTimeSelect.innerHTML = `<option value="">Cargando…</option>`;
+    turnoTimeSelect.disabled = true;
+
+    });
 
 (function(){
   'use strict';
@@ -1371,7 +1418,8 @@
   });
   
   console.log('✅ Sistema de Turnos Pendientes inicializado');
-})();
+  })();
+
   // ========== INICIALIZACIÓN ==========
   (async function init(){
     console.log('🚀 Inicializando panel admin');
@@ -1397,16 +1445,59 @@
   if (!dateInput) return;
   
   const diasDisponibles = window.currentMedicoDiasDisponibles || [];
-  if (diasDisponibles.length === 0) return;
+  if (diasDisponibles.length === 0) {
+    console.warn('⚠️ No hay días disponibles configurados');
+    return;
+  }
   
+  console.log('📅 Días disponibles del médico:', diasDisponibles);
+  
+  // Mapeo de días a números (0=domingo, 6=sábado)
   const diasMap = {
     'domingo': 0, 'lunes': 1, 'martes': 2, 'miercoles': 3,
     'jueves': 4, 'viernes': 5, 'sabado': 6
   };
   
   const diasNumeros = diasDisponibles.map(d => diasMap[d]).filter(n => n !== undefined);
+  console.log('🔢 Días en números:', diasNumeros);
   
+  // ✅ CONFIGURAR RESTRICCIONES DEL INPUT
+  const today = new Date();
+  const maxDate = new Date();
+  maxDate.setMonth(maxDate.getMonth() + 3);
+  
+  dateInput.min = today.toISOString().split('T')[0];
+  dateInput.max = maxDate.toISOString().split('T')[0];
+  
+  // ✅ VALIDACIÓN EN TIEMPO REAL
   dateInput.addEventListener('input', function(e) {
+    const value = e.target.value;
+    if (!value) return;
+    
+    const date = new Date(value + 'T00:00:00');
+    const dayOfWeek = date.getDay();
+    
+    console.log('📆 Fecha seleccionada:', value, '- Día de semana:', dayOfWeek);
+    
+    if (!diasNumeros.includes(dayOfWeek)) {
+      const diasCapitalizados = diasDisponibles.map(d => 
+        d.charAt(0).toUpperCase() + d.slice(1)
+      ).join(', ');
+      
+      alert(`⚠️ EL MÉDICO NO ATIENDE ESE DÍA\n\nEl médico seleccionado solo atiende:\n${diasCapitalizados}\n\nPor favor, elegí otro día.`);
+      e.target.value = '';
+      
+      // Limpiar horarios
+      const timeSelect = document.getElementById('turnoTime');
+      if (timeSelect) {
+        timeSelect.innerHTML = '<option value="">Elegí un día válido...</option>';
+        timeSelect.disabled = true;
+      }
+    }
+  });
+  
+  // ✅ VALIDACIÓN AL CAMBIAR (doble seguridad)
+  dateInput.addEventListener('change', function(e) {
     const value = e.target.value;
     if (!value) return;
     
@@ -1418,10 +1509,13 @@
         d.charAt(0).toUpperCase() + d.slice(1)
       ).join(', ');
       
-      alert(`⚠️ El médico no atiende ese día.\n\nDías disponibles: ${diasCapitalizados}`);
+      alert(`⚠️ DÍA NO DISPONIBLE\n\nDías de atención: ${diasCapitalizados}`);
       e.target.value = '';
     }
   });
-}
-  })();
-})();
+  
+  console.log('✅ Restricciones de calendario configuradas');
+
+})(); // cierre IIFE turnos pendientes
+})(); // cierre IIFE sistema principal
+})(); // cierre IIFE init
