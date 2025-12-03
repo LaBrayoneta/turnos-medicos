@@ -344,7 +344,8 @@ if ($action === 'my_appointments') {
   }
 }
 
-// ✅ CORREGIDO: Reservar turno
+// controllers/turnos_api.php - SECCIÓN DE BOOK (aprox línea 489)
+
 if ($action === 'book' && $_SERVER['REQUEST_METHOD'] === 'POST') {
   ensure_csrf();
   $uid = require_login();
@@ -356,7 +357,7 @@ if ($action === 'book' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     
     error_log("🔄 Book request - User: $uid, Med: $med, Date: $date, Time: $time");
     
-    // Validaciones
+    // Validaciones básicas
     if (!$date || !validate_date($date)) {
       json_out(['ok' => false, 'error' => 'Fecha inválida'], 400);
     }
@@ -366,23 +367,23 @@ if ($action === 'book' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($med <= 0) json_out(['ok' => false, 'error' => 'Médico inválido'], 400);
 
     // Verificar médico activo
-    $chkM = $pdo->prepare("SELECT 1 FROM medico WHERE Id_medico = ? AND Activo = 1");
+    $chkM = $pdo->prepare("SELECT 1 FROM medico WHERE Id_medico = ? AND activo = 1");
     $chkM->execute([$med]); 
     if (!$chkM->fetch()) json_out(['ok' => false, 'error' => 'Médico no encontrado'], 404);
 
     // Obtener paciente
-    $st = $pdo->prepare("SELECT Id_paciente FROM paciente WHERE Id_usuario = ? AND Activo = 1 LIMIT 1");
+    $st = $pdo->prepare("SELECT Id_paciente FROM paciente WHERE Id_usuario = ? AND activo = 1 LIMIT 1");
     $st->execute([$uid]); 
     $pacId = (int)($st->fetchColumn() ?: 0);
     if ($pacId <= 0) json_out(['ok' => false, 'error' => 'Usuario no registrado como paciente'], 400);
 
-    // ✅ VERIFICAR TURNO DUPLICADO
+    // ✅ CORRECCIÓN: Verificar turno duplicado SOLO para estados activos
     $chkExisting = $pdo->prepare("
       SELECT COUNT(*) FROM turno 
       WHERE Id_paciente = ? 
       AND Id_medico = ? 
-      AND (Estado IS NULL OR Estado = 'reservado' OR Estado = 'pendiente_confirmacion')
-      AND Fecha >= NOW()
+      AND estado IN ('pendiente_confirmacion', 'confirmado')
+      AND fecha >= NOW()
     ");
     $chkExisting->execute([$pacId, $med]);
     
@@ -399,8 +400,6 @@ if ($action === 'book' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!$dt) json_out(['ok' => false, 'error' => 'Fecha/hora inválidas'], 400);
 
     $fechaHora = $dt->format('Y-m-d H:i:00');
-    
-    error_log("📅 Validating schedule - Date: $fechaHora");
     
     // Verificar horario del médico
     $diaSemana = get_day_name($date);
@@ -419,7 +418,8 @@ if ($action === 'book' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     // Verificar disponibilidad del slot
     $chk = $pdo->prepare("
       SELECT 1 FROM turno 
-      WHERE Fecha = ? AND Id_medico = ? AND (Estado IS NULL OR Estado <> 'cancelado') 
+      WHERE Fecha = ? AND Id_medico = ? 
+      AND estado IN ('pendiente_confirmacion', 'confirmado')
       LIMIT 1
     ");
     $chk->execute([$fechaHora, $med]);
@@ -428,7 +428,7 @@ if ($action === 'book' && $_SERVER['REQUEST_METHOD'] === 'POST') {
       json_out(['ok' => false, 'error' => 'Horario ocupado'], 409);
     }
 
-    // ✅ CORREGIDO: Insertar turno con estado correcto
+    // ✅ Insertar turno
     error_log("✅ Inserting turno - Patient: $pacId, Doctor: $med, DateTime: $fechaHora");
     
     $ins = $pdo->prepare("

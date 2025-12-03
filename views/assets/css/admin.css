@@ -749,8 +749,9 @@ td.row-actions {
   padding:8px 16px;
 }
 
-/* Agregar al final de admin.css */
+
 .btn-sm {
   padding: 6px 12px !important;
   font-size: 13px !important;
 }
+

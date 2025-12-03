@@ -680,56 +680,90 @@
   }
 
   newDate?.addEventListener('change', async ()=>{
-    setMsg(msgTurns, '');
-    
-    if (newDate.value) {
-      const validation = Utils.isValidTurnoDate(newDate.value);
-      if (!validation.valid) {
-        setMsg(msgTurns, '❌ ' + validation.error, false);
-        newDate.value = '';
-        return;
-      }
-    }
-    
-    if(newTime) {
-      newTime.innerHTML=`<option value="">Cargando…</option>`;
-      newTime.disabled=true;
-    }
-    if(btnReprog) btnReprog.disabled=true;
-    
-    if(!newDate.value || !currentMedicoId){
-      if(newTime) newTime.innerHTML=`<option value="">Elegí fecha…</option>`;
+  setMsg(msgTurns, '');
+  
+  if (newDate.value) {
+    const validation = Utils.isValidTurnoDate(newDate.value);
+    if (!validation.valid) {
+      setMsg(msgTurns, '❌ ' + validation.error, false);
+      newDate.value = '';
       return;
     }
     
-    const qs = new URLSearchParams({
-      fetch:'slots',
-      date:newDate.value,
-      medico_id:currentMedicoId
-    });
-    
-    try {
-      const r = await fetch(`admin.php?${qs.toString()}`, { headers:{ 'Accept':'application/json' }});
-      const data = await r.json();
-      if(!data.ok) {setMsg(msgTurns, data.error||'Error', false);
-        if(newTime) newTime.innerHTML=`<option value="">Error</option>`;
-        return;
-      }
-      if(newTime) {
-        newTime.innerHTML = `<option value="">Elegí horario…</option>`;
-        (data.slots||[]).forEach(h => {
-          const opt=document.createElement('option');
-          opt.value=h;
-          opt.textContent=Utils.formatHour12(h);
-          newTime.appendChild(opt);
+    // ✅ VERIFICAR QUE EL MÉDICO ATIENDA ESE DÍA
+    if (currentMedicoId) {
+      const diaSemana = Utils.getDayName(newDate.value);
+      
+      try {
+        const resMedInfo = await fetch(`admin.php?fetch=medico_horarios&medico_id=${currentMedicoId}`, {
+          headers: { 'Accept': 'application/json' }
         });
-        newTime.disabled = false;
+        const dataMedInfo = await resMedInfo.json();
+        
+        if (dataMedInfo.ok && dataMedInfo.horarios) {
+          const atiendeEsteDia = dataMedInfo.horarios.some(h => 
+            (h.dia_semana || h.Dia_semana) === diaSemana
+          );
+          
+          if (!atiendeEsteDia) {
+            const diasDisponibles = [...new Set(dataMedInfo.horarios.map(h => 
+              (h.dia_semana || h.Dia_semana).charAt(0).toUpperCase() + 
+              (h.dia_semana || h.Dia_semana).slice(1)
+            ))].join(', ');
+            
+            alert(`⚠️ El médico no atiende los ${diaSemana}s\n\nDías disponibles: ${diasDisponibles}`);
+            newDate.value = '';
+            if(newTime) newTime.innerHTML=`<option value="">Elegí un día válido...</option>`;
+            return;
+          }
+        }
+      } catch (e) {
+        console.error('Error verificando horarios:', e);
       }
-    } catch (e) {
-      setMsg(msgTurns, 'Error', false);
-      console.error(e);
     }
+  }
+  
+  if(newTime) {
+    newTime.innerHTML=`<option value="">Cargando…</option>`;
+    newTime.disabled=true;
+  }
+  if(btnReprog) btnReprog.disabled=true;
+  
+  if(!newDate.value || !currentMedicoId){
+    if(newTime) newTime.innerHTML=`<option value="">Elegí fecha…</option>`;
+    return;
+  }
+  
+  const qs = new URLSearchParams({
+    fetch:'slots',
+    date:newDate.value,
+    medico_id:currentMedicoId
   });
+  
+  try {
+    const r = await fetch(`admin.php?${qs.toString()}`, { headers:{ 'Accept':'application/json' }});
+    const data = await r.json();
+    if(!data.ok) {
+      setMsg(msgTurns, data.error||'Error', false);
+      if(newTime) newTime.innerHTML=`<option value="">Error</option>`;
+      return;
+    }
+    if(newTime) {
+      newTime.innerHTML = `<option value="">Elegí horario…</option>`;
+      (data.slots||[]).forEach(h => {
+        const opt=document.createElement('option');
+        opt.value=h;
+        opt.textContent=Utils.formatHour12(h);
+        newTime.appendChild(opt);
+      });
+      newTime.disabled = false;
+    }
+  } catch (e) {
+    setMsg(msgTurns, 'Error', false);
+    console.error(e);
+  }
+});
+
 
   newTime?.addEventListener('change', ()=> {
     if(btnReprog) btnReprog.disabled = !(selectedTurnoId && newDate?.value && newTime?.value);
@@ -790,22 +824,57 @@
 
   // ========== CREAR TURNO ==========
   
-  btnNewTurno?.addEventListener('click', ()=>{
-    if (!currentMedicoId) {
-      setMsg(msgTurns, 'Seleccioná un médico primero', false);
-      return;
-    }
-    $('#turnoMedicoId').value = currentMedicoId;
-    selectedPacienteId.value = '';
-    selectedPacienteInfo.textContent = 'Ninguno';
-    selectedPacienteInfo.style.color = 'var(--muted)';
-    turnoDate.value = '';
-    turnoTime.innerHTML = `<option value="">Elegí fecha primero...</option>`;
-    searchPaciente.value = '';
-    pacienteResults.innerHTML = '';
-    setMsg(msgModal, '');
-    showModal(modalCreateTurno);
-  });
+  btnNewTurno?.addEventListener('click', async ()=>{
+  if (!currentMedicoId) {
+    setMsg(msgTurns, 'Seleccioná un médico primero', false);
+    return;
+  }
+  
+  // Obtener información del médico seleccionado
+  const medicoActual = medicosData.find(m => m.Id_medico == currentMedicoId);
+  
+  if (!medicoActual) {
+    setMsg(msgTurns, 'Error: médico no encontrado', false);
+    return;
+  }
+  
+  // Extraer días disponibles del médico
+  const diasDisponibles = [];
+  if (medicoActual.horarios && medicoActual.horarios.length > 0) {
+    medicoActual.horarios.forEach(h => {
+      const dia = h.dia_semana || h.Dia_semana;
+      if (dia && !diasDisponibles.includes(dia)) {
+        diasDisponibles.push(dia);
+      }
+    });
+  }
+  
+  // Guardar días disponibles globalmente
+  window.currentMedicoDiasDisponibles = diasDisponibles;
+  
+  $('#turnoMedicoId').value = currentMedicoId;
+  selectedPacienteId.value = '';
+  selectedPacienteInfo.textContent = 'Ninguno';
+  selectedPacienteInfo.style.color = 'var(--muted)';
+  turnoDate.value = '';
+  turnoTime.innerHTML = `<option value="">Elegí fecha primero...</option>`;
+  searchPaciente.value = '';
+  pacienteResults.innerHTML = '';
+  setMsg(msgModal, '');
+  
+  // Mostrar días disponibles
+  if (diasDisponibles.length > 0) {
+    const diasCapitalizados = diasDisponibles.map(d => 
+      d.charAt(0).toUpperCase() + d.slice(1)
+    ).join(', ');
+    setMsg(msgModal, `ℹ️ Este médico atiende: ${diasCapitalizados}`, true);
+  }
+  
+  showModal(modalCreateTurno);
+  
+  // Configurar restricciones del calendario
+  setTimeout(() => setupMedicoDateRestrictions(), 100);
+});
 
   let searchTimeout;
   searchPaciente?.addEventListener('input', ()=>{
@@ -1323,5 +1392,36 @@
       console.error('❌ Error fatal en inicialización:', error);
       alert('Error al inicializar el panel. Recarga la página.');
     }
+    function setupMedicoDateRestrictions() {
+  const dateInput = document.getElementById('turnoDate');
+  if (!dateInput) return;
+  
+  const diasDisponibles = window.currentMedicoDiasDisponibles || [];
+  if (diasDisponibles.length === 0) return;
+  
+  const diasMap = {
+    'domingo': 0, 'lunes': 1, 'martes': 2, 'miercoles': 3,
+    'jueves': 4, 'viernes': 5, 'sabado': 6
+  };
+  
+  const diasNumeros = diasDisponibles.map(d => diasMap[d]).filter(n => n !== undefined);
+  
+  dateInput.addEventListener('input', function(e) {
+    const value = e.target.value;
+    if (!value) return;
+    
+    const date = new Date(value + 'T00:00:00');
+    const dayOfWeek = date.getDay();
+    
+    if (!diasNumeros.includes(dayOfWeek)) {
+      const diasCapitalizados = diasDisponibles.map(d => 
+        d.charAt(0).toUpperCase() + d.slice(1)
+      ).join(', ');
+      
+      alert(`⚠️ El médico no atiende ese día.\n\nDías disponibles: ${diasCapitalizados}`);
+      e.target.value = '';
+    }
+  });
+}
   })();
 })();

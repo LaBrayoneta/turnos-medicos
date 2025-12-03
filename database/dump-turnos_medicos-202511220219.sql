@@ -136,7 +136,7 @@ CREATE TABLE `horario_medico` (
   KEY `idx_horario` (`hora_inicio`,`hora_fin`),
   CONSTRAINT `horario_medico_ibfk_1` FOREIGN KEY (`Id_medico`) REFERENCES `medico` (`Id_medico`) ON DELETE CASCADE,
   CONSTRAINT `horario_medico_chk_1` CHECK ((`Dia_semana` in (_utf8mb4'lunes',_utf8mb4'martes',_utf8mb4'miercoles',_utf8mb4'jueves',_utf8mb4'viernes',_utf8mb4'sabado',_utf8mb4'domingo')))
-) ENGINE=InnoDB AUTO_INCREMENT=29 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=33 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -203,7 +203,7 @@ CREATE TABLE `medico` (
   KEY `idx_activo` (`activo`),
   CONSTRAINT `medico_ibfk_1` FOREIGN KEY (`Id_usuario`) REFERENCES `usuario` (`Id_usuario`) ON DELETE CASCADE,
   CONSTRAINT `medico_ibfk_2` FOREIGN KEY (`Id_Especialidad`) REFERENCES `especialidad` (`Id_Especialidad`) ON DELETE RESTRICT
-) ENGINE=InnoDB AUTO_INCREMENT=6 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=8 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -232,7 +232,7 @@ CREATE TABLE `obra_social` (
   UNIQUE KEY `Id_obra_social` (`Id_obra_social`),
   UNIQUE KEY `Nombre` (`nombre`),
   KEY `idx_activo` (`activo`)
-) ENGINE=InnoDB AUTO_INCREMENT=9 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=10 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -241,7 +241,7 @@ CREATE TABLE `obra_social` (
 
 LOCK TABLES `obra_social` WRITE;
 /*!40000 ALTER TABLE `obra_social` DISABLE KEYS */;
-INSERT INTO `obra_social` VALUES (1,'OSPROTURA',1,'2025-11-14 03:18:32'),(2,'OSMISS',1,'2025-11-14 03:18:32'),(4,'OSTAXBA',1,'2025-11-14 03:18:32'),(5,'OSDE',1,'2025-11-14 03:18:32'),(6,'Swiss Medical',1,'2025-11-14 03:18:32'),(7,'Sin obra social',1,'2025-11-14 03:18:32'),(8,'OTXCARA',1,'2025-11-14 05:16:18');
+INSERT INTO `obra_social` VALUES (1,'OSPROTURA',1,'2025-11-14 03:18:32'),(2,'OSMISS',1,'2025-11-14 03:18:32'),(4,'OSTAXBA',1,'2025-11-14 03:18:32'),(6,'Swiss Medical',1,'2025-11-14 03:18:32'),(7,'Sin obra social',1,'2025-11-14 03:18:32'),(8,'OTXCARA',1,'2025-11-14 05:16:18'),(9,'OSDE',1,'2025-11-22 04:58:23');
 /*!40000 ALTER TABLE `obra_social` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -339,7 +339,7 @@ CREATE TABLE `secretaria` (
   UNIQUE KEY `Id_usuario` (`Id_usuario`),
   KEY `idx_activo` (`activo`),
   CONSTRAINT `secretaria_ibfk_1` FOREIGN KEY (`Id_usuario`) REFERENCES `usuario` (`Id_usuario`) ON DELETE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=5 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -394,7 +394,7 @@ CREATE TABLE `turno` (
   CONSTRAINT `turno_ibfk_4` FOREIGN KEY (`Id_medico_atencion`) REFERENCES `medico` (`Id_medico`) ON DELETE SET NULL,
   CONSTRAINT `chk_turno_estado_nuevo` CHECK ((`estado` in (_utf8mb4'pendiente_confirmacion',_utf8mb4'confirmado',_utf8mb4'rechazado',_utf8mb4'reservado',_utf8mb4'cancelado',_utf8mb4'completado',_utf8mb4'ausente'))),
   CONSTRAINT `turno_chk_estados_confirmacion` CHECK ((`estado` in (_utf8mb4'pendiente_confirmacion',_utf8mb4'confirmado',_utf8mb4'rechazado',_utf8mb4'reservado',_utf8mb4'cancelado',_utf8mb4'completado',_utf8mb4'ausente')))
-) ENGINE=InnoDB AUTO_INCREMENT=14 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=18 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -403,7 +403,7 @@ CREATE TABLE `turno` (
 
 LOCK TABLES `turno` WRITE;
 /*!40000 ALTER TABLE `turno` DISABLE KEYS */;
-INSERT INTO `turno` VALUES (13,1,5,NULL,'2025-11-26 19:00:00','confirmado','2025-11-20 19:08:22',5,NULL,0,0,NULL,NULL,NULL,'2025-11-20 19:08:22','2025-11-20 19:08:22');
+INSERT INTO `turno` VALUES (13,1,5,NULL,'2025-11-26 19:00:00','cancelado','2025-11-20 19:08:22',5,NULL,0,0,NULL,NULL,NULL,'2025-11-20 19:08:22','2025-11-22 04:01:06'),(15,2,5,NULL,'2025-11-26 19:30:00','cancelado','2025-11-22 03:46:50',9,NULL,1,0,NULL,NULL,NULL,'2025-11-22 03:35:55','2025-11-22 04:01:04'),(16,2,3,NULL,'2025-11-27 12:30:00','cancelado','2025-11-22 04:03:17',5,NULL,1,0,NULL,NULL,NULL,'2025-11-22 04:02:34','2025-11-22 04:51:04'),(17,1,3,NULL,'2025-11-27 14:00:00','cancelado','2025-11-22 04:49:53',5,NULL,0,0,NULL,NULL,NULL,'2025-11-22 04:49:53','2025-11-22 04:51:02');
 /*!40000 ALTER TABLE `turno` ENABLE KEYS */;
 UNLOCK TABLES;
 /*!50003 SET @saved_cs_client      = @@character_set_client */ ;
@@ -624,7 +624,7 @@ CREATE TABLE `usuario` (
   KEY `idx_email` (`email`),
   KEY `idx_rol` (`rol`),
   CONSTRAINT `usuario_chk_1` CHECK ((`Rol` in (_utf8mb4'paciente',_utf8mb4'medico',_utf8mb4'secretaria')))
-) ENGINE=InnoDB AUTO_INCREMENT=12 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=15 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -633,7 +633,7 @@ CREATE TABLE `usuario` (
 
 LOCK TABLES `usuario` WRITE;
 /*!40000 ALTER TABLE `usuario` DISABLE KEYS */;
-INSERT INTO `usuario` VALUES (1,'Braian','Perez','48654321','braian@gmail.com','$2y$12$UapWp8WCTnSoT6qKOGeEIe8HWSe9KCfsrQNOjxF42IlwG8NfAeDpe','paciente',0,NULL,NULL,'2025-11-15 21:49:48','2025-11-14 03:59:46'),(2,'María','González','30456789','secretaria@clinica.com','$2y$12$YWxgGHt5QX6Ieyh44Oy5hORtA43NdifAKPecM/8zayORasXUzsb36','secretaria',0,NULL,NULL,'2025-11-15 03:43:13','2025-11-14 04:02:15'),(5,'Braian','Salgado','54326478','braian1@gmail.com','$2y$10$TRtyLViiklElHyoigLJJqezSpH1yIVTrYM0d.F3/6bGgUnXzgw6iu','medico',0,NULL,NULL,'2025-11-20 11:48:04','2025-11-14 04:56:17'),(9,'Xavi','Hernandez','53432129','Xavi@gmail.com','$2y$10$lUtNCoWfXkhSZLh2go.PpuJWOmzZNnRYGkyoFeCe79zSKagUG2qdu','medico',0,NULL,NULL,'2025-11-20 23:33:02','2025-11-15 22:00:25'),(10,'Uriel','Marquez','95876432','braiansalgado2436@gmail.com','$2y$12$m0OMHWtCv38DAz3F/OFoBuuO3oF4wIgs4oeDQlZF8dGij4yDSUOXm','paciente',0,NULL,NULL,'2025-11-20 19:47:28','2025-11-16 14:47:03'),(11,'Cristina','Fernandez','54674324','cris@gmail.com','$2y$12$C3pa3AP.yucALuliWFMtiOSaYAA/Dxn5E0xQGePX/T36Hc6zj9VKS','paciente',0,NULL,NULL,'2025-11-20 23:32:30','2025-11-20 20:09:31');
+INSERT INTO `usuario` VALUES (1,'Braian','Perez','48654321','braian@gmail.com','$2y$12$UapWp8WCTnSoT6qKOGeEIe8HWSe9KCfsrQNOjxF42IlwG8NfAeDpe','paciente',0,NULL,NULL,'2025-11-15 21:49:48','2025-11-14 03:59:46'),(2,'María','González','30456789','secretaria@clinica.com','$2y$12$YWxgGHt5QX6Ieyh44Oy5hORtA43NdifAKPecM/8zayORasXUzsb36','secretaria',0,NULL,NULL,'2025-11-22 04:57:12','2025-11-14 04:02:15'),(5,'Braian','Salgado','54326478','braian1@gmail.com','$2y$10$TRtyLViiklElHyoigLJJqezSpH1yIVTrYM0d.F3/6bGgUnXzgw6iu','medico',0,NULL,NULL,'2025-11-22 04:03:07','2025-11-14 04:56:17'),(9,'Xavi','Hernandez','53432129','Xavi@gmail.com','$2y$10$lUtNCoWfXkhSZLh2go.PpuJWOmzZNnRYGkyoFeCe79zSKagUG2qdu','medico',0,NULL,NULL,'2025-11-22 03:36:36','2025-11-15 22:00:25'),(10,'Uriel','Marquez','95876432','braiansalgado2436@gmail.com','$2y$12$m0OMHWtCv38DAz3F/OFoBuuO3oF4wIgs4oeDQlZF8dGij4yDSUOXm','paciente',0,NULL,NULL,'2025-11-22 04:02:20','2025-11-16 14:47:03'),(11,'Cristina','Fernandez','54674324','cris@gmail.com','$2y$12$C3pa3AP.yucALuliWFMtiOSaYAA/Dxn5E0xQGePX/T36Hc6zj9VKS','paciente',0,NULL,NULL,'2025-11-20 23:32:30','2025-11-20 20:09:31');
 /*!40000 ALTER TABLE `usuario` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -650,4 +650,4 @@ UNLOCK TABLES;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2025-11-20 21:34:35
+-- Dump completed on 2025-11-22  2:19:04

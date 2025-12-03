@@ -277,141 +277,129 @@
   }
 
   // ========== CALENDARIO ==========
-  function renderCalendar() {
-    console.log('🗓️ Renderizando calendario para:', current);
 
-    calTitle.textContent = `${MONTHS[current.getMonth()]} ${current.getFullYear()}`;
-    selectedDate = null;
-    selectedSlot = null;
-    btnReservar.disabled = true;
+function renderCalendar() {
+  console.log('🗓️ Renderizando calendario para:', current);
 
-    const calHint = $('#calHint');
-    if (!currentMedicoData) {
-      slotsBox.innerHTML = '<div style="padding:20px;text-align:center;color:var(--muted)">Elegí un médico primero…</div>';
-      if (calHint) calHint.textContent = '💡 Seleccioná un médico para ver disponibilidad';
+  calTitle.textContent = `${MONTHS[current.getMonth()]} ${current.getFullYear()}`;
+  selectedDate = null;
+  selectedSlot = null;
+  btnReservar.disabled = true;
+
+  const calHint = $('#calHint');
+  if (!currentMedicoData) {
+    slotsBox.innerHTML = '<div style="padding:20px;text-align:center;color:var(--muted)">Elegí un médico primero…</div>';
+    if (calHint) calHint.textContent = '💡 Seleccioná un médico para ver disponibilidad';
+  } else {
+    slotsBox.innerHTML = '<div style="padding:20px;text-align:center;color:var(--muted)">Elegí un día disponible…</div>';
+    const horarios = currentMedicoData.horarios || [];
+    if (horarios.length === 0) {
+      if (calHint) calHint.textContent = '⚠️ Este médico no tiene horarios configurados';
     } else {
-      slotsBox.innerHTML = '<div style="padding:20px;text-align:center;color:var(--muted)">Elegí un día disponible…</div>';
-      const horarios = currentMedicoData.horarios || [];
-      if (horarios.length === 0) {
-        if (calHint) calHint.textContent = '⚠️ Este médico no tiene horarios configurados';
-      } else {
-        const dias = [...new Set(horarios.map(h => h.Dia_semana))];
-        const diasTexto = dias.map(d => d.charAt(0).toUpperCase() + d.slice(1)).join(', ');
-        if (calHint) calHint.textContent = `📅 Días disponibles: ${diasTexto}`;
-      }
+      const dias = [...new Set(horarios.map(h => h.Dia_semana))];
+      const diasTexto = dias.map(d => d.charAt(0).toUpperCase() + d.slice(1)).join(', ');
+      if (calHint) calHint.textContent = `📅 Días disponibles: ${diasTexto}`;
     }
+  }
 
-    calPrev.disabled = (current <= minMonth);
-    calNext.disabled = (current >= maxMonth);
+  calPrev.disabled = (current <= minMonth);
+  calNext.disabled = (current >= maxMonth);
 
-    calGrid.innerHTML = '';
+  calGrid.innerHTML = '';
 
-    const year = current.getFullYear();
-    const month = current.getMonth();
+  const year = current.getFullYear();
+  const month = current.getMonth();
 
-    const firstDay = new Date(year, month, 1);
-    const lastDay = new Date(year, month + 1, 0);
+  const firstDay = new Date(year, month, 1);
+  const lastDay = new Date(year, month + 1, 0);
 
-    let offset = (firstDay.getDay() + 6) % 7;
+  let offset = (firstDay.getDay() + 6) % 7;
 
-    if (offset > 0) {
-      const prevMonth = new Date(year, month, 0);
-      const prevDays = prevMonth.getDate();
+  // Días del mes anterior (grises)
+  if (offset > 0) {
+    const prevMonth = new Date(year, month, 0);
+    const prevDays = prevMonth.getDate();
 
-      for (let i = offset - 1; i >= 0; i--) {
-        const day = prevDays - i;
-        const cell = document.createElement('div');
-        cell.className = 'day muted';
-        cell.textContent = day;
-        calGrid.appendChild(cell);
-      }
-    }
-
-    const today = getToday();
-    const maxDate = new Date();
-    maxDate.setMonth(maxDate.getMonth() + 3);
-    maxDate.setHours(23, 59, 59, 999);
-
-    for (let d = 1; d <= lastDay.getDate(); d++) {
+    for (let i = offset - 1; i >= 0; i--) {
+      const day = prevDays - i;
       const cell = document.createElement('div');
-      cell.className = 'day';
-      cell.textContent = d;
-
-      const dateObj = new Date(year, month, d);
-      dateObj.setHours(0, 0, 0, 0);
-
-      const isPast = dateObj < today;
-      const isTooFar = dateObj > maxDate;
-      const isDayAvailable = currentMedicoData && isDayInSchedule(dateObj);
-
-      if (isPast) {
-        cell.classList.add('muted');
-        cell.title = 'Fecha pasada';
-      } else if (isTooFar) {
-        cell.classList.add('muted');
-        cell.title = 'Fecha muy lejana (máximo 3 meses)';
-      } else if (!currentMedicoData) {
-        cell.title = 'Seleccioná un médico primero';
-      } else if (!isDayAvailable) {
-        cell.title = 'Médico no atiende este día';
-      } else {
-        cell.classList.add('available');
-        cell.title = 'Día disponible - Click para ver horarios';
-        cell.addEventListener('click', () => selectDay(dateObj, cell));
-      }
-
-      if (toYMD(dateObj) === toYMD(today)) {
-        cell.style.fontWeight = 'bold';
-        cell.style.border = '2px solid var(--primary)';
-      }
-
+      cell.className = 'day muted';
+      cell.textContent = day;
       calGrid.appendChild(cell);
     }
+  }
 
-    const totalCells = offset + lastDay.getDate();
-    const remainingCells = totalCells % 7;
-    if (remainingCells > 0) {
-      const nextDays = 7 - remainingCells;
-      for (let i = 1; i <= nextDays; i++) {
-        const cell = document.createElement('div');
-        cell.className = 'day muted';
-        cell.textContent = i;
-        calGrid.appendChild(cell);
-      }
+  const today = getToday();
+  const maxDate = new Date();
+  maxDate.setMonth(maxDate.getMonth() + 3);
+  maxDate.setHours(23, 59, 59, 999);
+
+  // Días del mes actual
+  for (let d = 1; d <= lastDay.getDate(); d++) {
+    const cell = document.createElement('div');
+    cell.className = 'day';
+    cell.textContent = d;
+
+    const dateObj = new Date(year, month, d);
+    dateObj.setHours(0, 0, 0, 0);
+
+    const isPast = dateObj < today;
+    const isTooFar = dateObj > maxDate;
+    
+    // ✅ CORRECCIÓN: Solo considerar disponible si el médico atiende ese día
+    const isDayAvailable = currentMedicoData && isDayInSchedule(dateObj);
+
+    if (isPast) {
+      cell.classList.add('muted');
+      cell.title = 'Fecha pasada';
+    } else if (isTooFar) {
+      cell.classList.add('muted');
+      cell.title = 'Fecha muy lejana (máximo 3 meses)';
+    } else if (!currentMedicoData) {
+      cell.classList.add('muted');
+      cell.title = 'Seleccioná un médico primero';
+    } else if (!isDayAvailable) {
+      // ✅ Días que el médico NO atiende (no clickeables)
+      cell.classList.add('muted');
+      cell.title = 'Médico no atiende este día';
+    } else {
+      // ✅ Solo estos días son clickeables
+      cell.classList.add('available');
+      cell.title = 'Día disponible - Click para ver horarios';
+      cell.addEventListener('click', () => selectDay(dateObj, cell));
     }
 
-    console.log('✅ Calendario renderizado');
-  }
-
-  function isDayInSchedule(dateObj) {
-    if (!currentMedicoData || !currentMedicoData.horarios) return false;
-    const dayName = getDayName(toYMD(dateObj));
-    return currentMedicoData.horarios.some(h => h.Dia_semana === dayName);
-  }
-
-  function highlightSelection(cell) {
-    document.querySelectorAll('.day.selected').forEach(el => el.classList.remove('selected'));
-    if (cell) cell.classList.add('selected');
-  }
-
-  async function selectDay(dateObj, cell) {
-    const dateStr = toYMD(dateObj);
-
-    selectedDate = dateStr;
-    selectedSlot = null;
-    btnReservar.disabled = true;
-    highlightSelection(cell);
-
-    console.log('📅 Día seleccionado:', formatDateDisplay(selectedDate));
-    setMsg(`📅 Fecha: ${formatDateDisplay(selectedDate)}`);
-
-    if (!selMedico.value) {
-      slotsBox.innerHTML = '<div style="padding:20px;color:var(--err);text-align:center">❌ Error: sin médico seleccionado</div>';
-      return;
+    // Destacar el día actual
+    if (toYMD(dateObj) === toYMD(today)) {
+      cell.style.fontWeight = 'bold';
+      cell.style.border = '2px solid var(--primary)';
     }
 
-    await fetchSlots(selectedDate, selMedico.value);
+    calGrid.appendChild(cell);
   }
+
+  // Días del mes siguiente (grises)
+  const totalCells = offset + lastDay.getDate();
+  const remainingCells = totalCells % 7;
+  if (remainingCells > 0) {
+    const nextDays = 7 - remainingCells;
+    for (let i = 1; i <= nextDays; i++) {
+      const cell = document.createElement('div');
+      cell.className = 'day muted';
+      cell.textContent = i;
+      calGrid.appendChild(cell);
+    }
+  }
+
+  console.log('✅ Calendario renderizado con filtro de días laborales');
+}
+
+// ✅ Verificar si el médico atiende ese día
+function isDayInSchedule(dateObj) {
+  if (!currentMedicoData || !currentMedicoData.horarios) return false;
+  const dayName = getDayName(toYMD(dateObj));
+  return currentMedicoData.horarios.some(h => h.Dia_semana === dayName);
+}
 
   // ========== SLOTS ==========
   async function fetchSlots(dateStr, medicoId) {
